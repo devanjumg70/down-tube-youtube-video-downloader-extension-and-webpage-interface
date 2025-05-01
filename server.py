@@ -1,12 +1,21 @@
-from flask import Flask, request, jsonify, redirect
+from flask import Flask, jsonify, request, redirect, send_file, Response
 from yt_dlp import YoutubeDL
-import re
 from flask_cors import CORS
+import os
+import tempfile
+import logging
+import time
+import uuid
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-
-# Enable CORS with more specific configuration
 CORS(app, resources={r"/*": {"origins": "*", "allow_headers": "*", "expose_headers": "*"}})
+
+# Temp directory for downloaded files
+TEMP_DIR = tempfile.gettempdir()
 
 # Add CORS headers to all responses
 @app.after_request
@@ -16,18 +25,32 @@ def add_cors_headers(response):
     response.headers['Access-Control-Allow-Methods'] = '*'
     return response
 
-# Clean input to extract video ID
 def extract_video_id(url):
-    match = re.search(r"(?:v=|youtu\.be/)([\w\-]{11})", url)
-    return match.group(1) if match else url  # fallback to direct ID
+    """Extract the video ID from a YouTube URL or return the ID if it's already an ID"""
+    if "/" in url or "youtu" in url:
+        from urllib.parse import urlparse, parse_qs
+        
+        # Handle youtu.be URLs
+        if "youtu.be" in url:
+            return url.split("/")[-1].split("?")[0]
+        
+        # Handle regular youtube.com URLs
+        query = parse_qs(urlparse(url).query)
+        return query.get("v", [url])[0]
+    
+    return url  # Already an ID
 
 @app.route("/api/info")
 def get_video_info():
-    video_id = extract_video_id(request.args.get("videoId", ""))
+    video_id = request.args.get("videoId")
+    
+    if not video_id:
+        return jsonify({"error": "Missing video ID"}), 400
+    
     url = f"https://www.youtube.com/watch?v={video_id}"
     
-    print(f"Received info request for video ID: {video_id}")
-    print(f"Request headers: {dict(request.headers)}")
+    logger.info(f"Received info request for video ID: {video_id}")
+    logger.info(f"Request headers: {dict(request.headers)}")
     
     ydl_opts = {
         "quiet": True,
@@ -38,43 +61,77 @@ def get_video_info():
 
     try:
         with YoutubeDL(ydl_opts) as ydl:
+            logger.info(f"Extracting info for {url}")
             info = ydl.extract_info(url, download=False)
             
             # Filter formats to include only desired resolutions
             formats = []
             seen_qualities = set()
             
+            # Log available formats for debugging
+            logger.info(f"Total formats available: {len(info['formats'])}")
             for f in info["formats"]:
-                # Skip formats without video or non-MP4 formats unless audio-only
-                if f["ext"] != "mp4" and f["ext"] != "m4a":
-                    continue
-                    
-                # Process audio-only formats
-                if f["ext"] == "m4a" and f.get("format_note") and "audio" in f.get("format_note").lower():
-                    if "audio" not in seen_qualities:
-                        formats.append({
-                            "itag": f["format_id"],
-                            "qualityLabel": "Audio Only",
-                            "container": "mp3",  # User-friendly label for audio
-                            "url": f["url"]
-                        })
-                        seen_qualities.add("audio")
-                
-                # Process video formats
+                logger.debug(f"Format: {f.get('format_id')} - {f.get('ext')} - {f.get('height')}p - Audio: {'yes' if f.get('acodec') != 'none' else 'no'}")
+            
+            # First add combined formats that include both video and audio
+            for f in info["formats"]:
+                # Look for formats that have both video and audio
+                if f.get("vcodec") != "none" and f.get("acodec") != "none":
+                    if f.get("height") in [360, 480, 720, 1080]:
+                        quality = f"{f['height']}p"
+                        if quality not in seen_qualities:
+                            formats.append({
+                                "itag": f["format_id"],
+                                "qualityLabel": f"{quality} (with audio)",
+                                "container": f["ext"],
+                                "url": f.get("url", ""),
+                                "has_audio": True,
+                                "has_video": True
+                            })
+                            seen_qualities.add(quality)
+                            logger.info(f"Added combined format: {f['format_id']} - {quality}")
+            
+            # Then add video-only formats for higher quality options
+            # (we'll combine with audio when downloading)
+            for f in info["formats"]:
                 if f["ext"] == "mp4" and f.get("height") in [360, 480, 720, 1080]:
                     quality = f"{f['height']}p"
-                    if quality not in seen_qualities:
+                    # Only add if we don't already have this quality as a combined format
+                    key = f"{quality}_video"
+                    if key not in seen_qualities:
                         formats.append({
                             "itag": f["format_id"],
                             "qualityLabel": quality,
                             "container": "mp4",
-                            "url": f["url"]
+                            "url": f.get("url", ""),
+                            "has_audio": False,
+                            "has_video": True
                         })
-                        seen_qualities.add(quality)
+                        seen_qualities.add(key)
+                        logger.info(f"Added video-only format: {f['format_id']} - {quality}")
+            
+            # Finally add audio-only format
+            for f in info["formats"]:
+                if f.get("vcodec") == "none" and f.get("acodec") != "none":
+                    if "audio" not in seen_qualities:
+                        formats.append({
+                            "itag": f["format_id"],
+                            "qualityLabel": "Audio Only",
+                            "container": f["ext"],
+                            "url": f.get("url", ""),
+                            "has_audio": True,
+                            "has_video": False
+                        })
+                        seen_qualities.add("audio")
+                        logger.info(f"Added audio-only format: {f['format_id']}")
+                        break  # Just take the first good audio format
             
             # Sort formats by quality (higher resolution first)
-            formats.sort(key=lambda x: 1080 if x["qualityLabel"] == "Audio Only" else 
-                         int(x["qualityLabel"].replace("p", "")), reverse=True)
+            formats.sort(key=lambda x: 0 if x["qualityLabel"] == "Audio Only" else 
+                         int(x["qualityLabel"].replace("p", "").replace(" (with audio)", "")), 
+                         reverse=True)
+            
+            logger.info(f"Returning {len(formats)} filtered formats for video: {info.get('title')}")
             
             return jsonify({
                 "title": info.get("title", "YouTube Video"),
@@ -83,6 +140,7 @@ def get_video_info():
                 "formats": formats
             })
     except Exception as e:
+        logger.error(f"Error extracting video info: {str(e)}")
         return jsonify({"error": str(e)})
 
 @app.route("/api/download")
@@ -94,40 +152,68 @@ def download():
         return jsonify({"error": "Missing video ID or format ID"}), 400
     
     url = f"https://www.youtube.com/watch?v={video_id}"
+    logger.info(f"Download request for video ID: {video_id}, format: {itag}")
     
+    # Create a unique filename for this download
+    file_id = str(uuid.uuid4())
+    output_path = os.path.join(TEMP_DIR, f"youtube_{video_id}_{file_id}.mp4")
+    
+    # Set up options for yt-dlp
     ydl_opts = {
-        "quiet": True,
-        "format": f"{itag}+bestaudio[ext=m4a]/best", # Request video format + audio, or best combined format
-        "skip_download": True,
-        "forcejson": True,
-        "merge_output_format": "mp4", # Ensure it's merged into mp4
+        "format": f"{itag}+bestaudio/best",  # Specified format + best audio, or best combined format
+        "merge_output_format": "mp4",        # Force mp4 for compatibility
+        "outtmpl": output_path,              # Output filename template
+        "quiet": True,                       # Don't print progress
+        "no_warnings": True,                 # Don't print warnings
+        "progress_hooks": [lambda d: logger.info(f"Download progress: {d.get('status')} - {d.get('_percent_str', 'N/A')}")],
     }
     
     try:
+        logger.info(f"Starting download with options: {ydl_opts}")
         with YoutubeDL(ydl_opts) as ydl:
-            # Extract info and get direct URL with combined audio and video
-            info = ydl.extract_info(url, download=False)
+            logger.info(f"Downloading {url}")
+            info = ydl.extract_info(url, download=True)
+            logger.info(f"Download completed: {output_path}")
             
-            # The URL might now be in a different location due to format merging
-            if info.get("url"):
-                # Direct URL is available for merged format
-                return redirect(info["url"])
-            elif info.get("requested_formats"):
-                # Check if we have the requested formats
-                for fmt in info.get("requested_formats", []):
-                    if fmt.get("format_id") == itag:
-                        if fmt.get("url"):
-                            return redirect(fmt["url"])
+            # Get video info for filename
+            title = info.get('title', 'video').replace(' ', '_')
+            # Sanitize filename
+            title = "".join(c for c in title if c.isalnum() or c in [' ', '_', '-']).rstrip()
             
-            # Fallback to searching in all formats
-            for f in info.get("formats", []):
-                if f.get("format_id") == itag:
-                    if f.get("url"):
-                        return redirect(f["url"])
+            # Check if the file was actually created
+            if not os.path.exists(output_path):
+                logger.error(f"Download failed: File not created at {output_path}")
+                return jsonify({"error": "Download failed"}), 500
             
-            # If we reach here, we couldn't find the format
-            return jsonify({"error": "Format not found or could not be merged with audio"}), 404
+            # Log file size for debugging
+            file_size = os.path.getsize(output_path)
+            logger.info(f"File size: {file_size} bytes")
+            
+            # Stream the file to client and delete after sending
+            @app.after_request
+            def cleanup(response):
+                # Clean up the temporary file after sending
+                # Wait briefly to ensure file isn't still being accessed
+                if os.path.exists(output_path):
+                    try:
+                        time.sleep(1)  # Give a small delay before cleanup
+                        os.remove(output_path)
+                        logger.info(f"Temporary file removed: {output_path}")
+                    except Exception as e:
+                        logger.error(f"Error removing temporary file: {str(e)}")
+                return response
+            
+            # Return the file
+            logger.info(f"Sending file to client: {title}.mp4")
+            return send_file(
+                output_path,
+                as_attachment=True,
+                download_name=f"{title}.mp4",
+                mimetype="video/mp4"
+            )
+            
     except Exception as e:
+        logger.error(f"Download error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/")
@@ -149,13 +235,19 @@ def hello():
             .video-info { display: flex; flex-direction: column; align-items: center; }
             .video-thumbnail { max-width: 320px; margin: 10px 0; border-radius: 4px; }
             .download-buttons { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; }
-            .download-btn { padding: 8px 15px; background: #2a76dd; color: white; border: none; border-radius: 4px; cursor: pointer; }
+            .download-btn { padding: 8px 15px; background: #2a76dd; color: white; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; }
             .download-btn:hover { background: #1c5bb9; }
+            .note { background: #fff3cd; padding: 10px; border-left: 4px solid #ffc107; margin: 10px 0; }
         </style>
     </head>
     <body>
         <h1>YouTube Downloader API Test</h1>
         <p>This page allows you to test the YouTube Downloader API directly.</p>
+        
+        <div class="note">
+            <strong>Note:</strong> This version now properly combines video and audio streams.
+            Downloads will take slightly longer as the server needs to process the files.
+        </div>
         
         <div class="form-group">
             <label>YouTube Video ID or URL:</label><br>
@@ -183,12 +275,12 @@ def hello():
                     // Simple extraction of video ID from URL
                     let videoId = input;
                     if (input.includes('watch?v=')) {
-                        const match = input.match(/[\\?&]v=([^&#]*)/);
+                        const match = input.match(/[\?&]v=([^&#]*)/);
                         if (match && match[1]) {
                             videoId = match[1];
                         }
                     } else if (input.includes('youtu.be/')) {
-                        const match = input.match(/youtu\\.be\\/(.*?)(?:\\?|$)/);
+                        const match = input.match(/youtu\.be\/(.*?)(\?|$)/);
                         if (match && match[1]) {
                             videoId = match[1];
                         }
