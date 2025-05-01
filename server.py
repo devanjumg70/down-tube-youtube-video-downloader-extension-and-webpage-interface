@@ -159,7 +159,10 @@ def get_video_info():
 def download():
     video_id = request.args.get("videoId")
     itag = request.args.get("itag")
-    use_ffmpeg = request.args.get("use_ffmpeg", "false").lower() == "true"
+    
+    # Support both parameter names (use_ffmpeg and useFFmpeg) for better compatibility
+    use_ffmpeg_param = request.args.get("use_ffmpeg", request.args.get("useFFmpeg", "true"))
+    use_ffmpeg = use_ffmpeg_param.lower() == "true"
     
     if not video_id or not itag:
         return jsonify({"error": "Missing video ID or format ID"}), 400
@@ -172,8 +175,13 @@ def download():
     
     # If we have FFmpeg and user requested it, use FFmpeg for merging
     if FFMPEG_AVAILABLE and use_ffmpeg:
+        logger.info("Using FFmpeg for download and merging")
         return download_with_ffmpeg(url, video_id, itag, file_id)
     else:
+        if not use_ffmpeg:
+            logger.info("FFmpeg disabled by user request, using yt-dlp only")
+        elif not FFMPEG_AVAILABLE:
+            logger.info("FFmpeg not available, falling back to yt-dlp")
         return download_with_ytdlp(url, video_id, itag, file_id)
 
 def download_with_ytdlp(url, video_id, itag, file_id):
