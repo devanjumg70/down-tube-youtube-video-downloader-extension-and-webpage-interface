@@ -501,10 +501,18 @@ def download_with_ffmpeg(url, video_id, itag, file_id):
             '-vn',                       # No video
             '-acodec', 'libmp3lame',     # Use MP3 codec
             '-ab', '192k',               # 192k bitrate
-            '-metadata', f'title={title}',
             output_path
         ]
-        subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
+        # Run FFmpeg command and capture stderr/stdout as strings
+        try:
+            result = subprocess.run(ffmpeg_cmd, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if result.returncode != 0:
+                logger.error(f"FFmpeg audio conversion error: {result.stderr}")
+                return jsonify({"error": f"FFmpeg error: {result.stderr}"}), 500
+            logger.info("FFmpeg audio conversion completed successfully")
+        except Exception as e:
+            logger.error(f"FFmpeg audio conversion error: {str(e)}")
+            return jsonify({"error": str(e)}), 500
         
         # Verify the output file exists
         if not os.path.exists(output_path):
@@ -635,11 +643,19 @@ def download_with_ffmpeg(url, video_id, itag, file_id):
             '-c:a', 'aac',                        # Use AAC for audio (widely compatible)
             '-b:a', '192k',                       # Good quality audio bitrate
             '-movflags', '+faststart',            # Optimize for web streaming
-            '-metadata', f'title={title}',        # Add title metadata
             output_path
         ]
-        subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
-        
+        # Run FFmpeg command and capture stderr/stdout as strings
+        try:
+            result = subprocess.run(ffmpeg_cmd, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if result.returncode != 0:
+                logger.error(f"FFmpeg error: {result.stderr}")
+                return jsonify({"error": f"FFmpeg error: {result.stderr}"}), 500
+            logger.info("FFmpeg merging completed successfully")
+        except Exception as e:
+            logger.error(f"FFmpeg error: {str(e)}")
+            return jsonify({"error": f"FFmpeg error: {str(e)}"}), 500
+            
         # Update progress for completion
         download_progress[file_id].update({
             'stage': 'completed',
