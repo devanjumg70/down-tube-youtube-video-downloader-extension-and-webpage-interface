@@ -1,12 +1,15 @@
 from flask import Flask, jsonify, request, redirect, send_file, Response
 from yt_dlp import YoutubeDL
 from flask_cors import CORS
+from flask_socketio import SocketIO
 import os
 import tempfile
 import logging
 import time
 import uuid
 import subprocess
+import json
+import threading
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -14,9 +17,54 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Temp directory for downloaded files
 TEMP_DIR = tempfile.gettempdir()
+
+# Track download progress
+download_progress = {}
+
+# Define a progress hook for yt-dlp
+def progress_hook(d):
+    file_id = d.get('info_dict', {}).get('__download_id', '')
+    if file_id and file_id in download_progress:
+        if d['status'] == 'downloading':
+            # Calculate progress percentage
+            total_bytes = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
+            downloaded_bytes = d.get('downloaded_bytes', 0)
+            
+            if total_bytes > 0:
+                progress = (downloaded_bytes / total_bytes) * 100
+                speed = d.get('speed', 0)
+                eta = d.get('eta', 0)
+                
+                # Update progress info
+                download_progress[file_id].update({
+                    'progress': round(progress, 2),
+                    'speed': speed,
+                    'eta': eta,
+                    'size': total_bytes,
+                    'downloaded': downloaded_bytes,
+                    'status': 'downloading'
+                })
+                
+                # Emit progress update
+                socketio.emit(f'progress_update_{file_id}', download_progress[file_id])
+        
+        elif d['status'] == 'finished':
+            download_progress[file_id].update({
+                'progress': 100,
+                'status': 'processing'
+            })
+            socketio.emit(f'progress_update_{file_id}', download_progress[file_id])
+            
+        elif d['status'] == 'error':
+            download_progress[file_id].update({
+                'status': 'error',
+                'error': d.get('error', 'Unknown error')
+            })
+            socketio.emit(f'progress_update_{file_id}', download_progress[file_id])
 
 # Check if ffmpeg is available
 def check_ffmpeg():
@@ -227,6 +275,16 @@ def download_with_ytdlp(url, video_id, itag, file_id):
     """Download and process using yt-dlp's built-in merging capability"""
     output_path = os.path.join(TEMP_DIR, f"youtube_{video_id}_{file_id}.mp4")
     
+    # Initialize progress tracking for this download
+    download_progress[file_id] = {
+        'progress': 0,
+        'speed': 0,
+        'eta': 0,
+        'status': 'starting',
+        'video_id': video_id,
+        'file_id': file_id
+    }
+    
     # Check if a format has both video and audio streams
     has_both_streams = False
     try:
@@ -356,6 +414,18 @@ def download_with_ytdlp(url, video_id, itag, file_id):
 
 def download_with_ffmpeg(url, video_id, itag, file_id):
     """Download video and audio separately and merge with FFmpeg, or handle audio-only formats"""
+    # Initialize progress tracking for this download
+    download_progress[file_id] = {
+        'progress': 0,
+        'speed': 0,
+        'eta': 0,
+        'status': 'starting',
+        'video_id': video_id,
+        'file_id': file_id,
+        'stage': 'initialization'
+    }
+    socketio.emit(f'progress_update_{file_id}', download_progress[file_id])
+    
     # First check if this is an audio-only format
     audio_only = False
     audio_format = "mp3"  # Default audio format is MP3 for better compatibility
@@ -500,8 +570,29 @@ def download_with_ffmpeg(url, video_id, itag, file_id):
             "outtmpl": temp_video,
         })
         logger.info(f"Downloading video stream with format {itag}")
+        # Update progress for video download stage
+        download_progress[file_id].update({
+            'stage': 'downloading_video',
+            'progress': 25,
+            'status': 'downloading'
+        })
+        socketio.emit(f'progress_update_{file_id}', download_progress[file_id])
+        
+        # Add progress hook to the options
+        video_opts['progress_hooks'] = [progress_hook]
+        # Add download ID to track this specific file
+        video_opts['postprocessor_args'] = [{'__download_id': file_id}]
+        
         with YoutubeDL(video_opts) as ydl:
             ydl.download([url])
+        
+        # Update progress for audio download stage
+        download_progress[file_id].update({
+            'stage': 'downloading_audio',
+            'progress': 50,
+            'status': 'downloading'
+        })
+        socketio.emit(f'progress_update_{file_id}', download_progress[file_id])
         
         # Download audio
         audio_opts = base_opts.copy()
@@ -510,6 +601,11 @@ def download_with_ffmpeg(url, video_id, itag, file_id):
             "outtmpl": temp_audio,
         })
         logger.info("Downloading audio stream")
+        
+        # Use progress hook for audio too
+        audio_opts['progress_hooks'] = [progress_hook]
+        audio_opts['postprocessor_args'] = [{'__download_id': file_id}]
+        
         with YoutubeDL(audio_opts) as ydl:
             ydl.download([url])
         
@@ -517,6 +613,14 @@ def download_with_ffmpeg(url, video_id, itag, file_id):
         if not os.path.exists(temp_video) or not os.path.exists(temp_audio):
             logger.error("Video or audio file not downloaded correctly")
             return jsonify({"error": "Failed to download video or audio streams"}), 500
+        
+        # Update progress for FFmpeg merging stage
+        download_progress[file_id].update({
+            'stage': 'merging',
+            'progress': 75,
+            'status': 'processing'
+        })
+        socketio.emit(f'progress_update_{file_id}', download_progress[file_id])
         
         # Merge with FFmpeg (optimized parameters)
         logger.info("Merging video and audio with FFmpeg")
@@ -535,6 +639,14 @@ def download_with_ffmpeg(url, video_id, itag, file_id):
             output_path
         ]
         subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
+        
+        # Update progress for completion
+        download_progress[file_id].update({
+            'stage': 'completed',
+            'progress': 100,
+            'status': 'completed'
+        })
+        socketio.emit(f'progress_update_{file_id}', download_progress[file_id])
         
         # Check if merged file exists
         if not os.path.exists(output_path):
@@ -1372,7 +1484,35 @@ def hello():
     """
     return html
 
+# Add a route to get progress information for a specific download
+@app.route("/api/progress/<file_id>")
+def get_progress(file_id):
+    if file_id in download_progress:
+        return jsonify(download_progress[file_id])
+    else:
+        return jsonify({"error": "Download not found"}), 404
+
+# SocketIO event for client connections
+@socketio.on('connect')
+def handle_connect():
+    logger.info(f"Client connected: {request.sid}")
+
+# SocketIO event for client disconnections
+@socketio.on('disconnect')
+def handle_disconnect():
+    logger.info(f"Client disconnected: {request.sid}")
+
+# SocketIO event for subscribing to progress updates
+@socketio.on('subscribe')
+def handle_subscribe(data):
+    file_id = data.get('file_id')
+    if file_id:
+        logger.info(f"Client {request.sid} subscribed to progress updates for {file_id}")
+        if file_id in download_progress:
+            # Send initial progress data
+            socketio.emit(f'progress_update_{file_id}', download_progress[file_id], to=request.sid)
+
 if __name__ == "__main__":
     port = 5000
     print(f"YouTube Downloader API Server running on port {port}")
-    app.run(host="0.0.0.0", port=port)
+    socketio.run(app, host="0.0.0.0", port=port, allow_unsafe_werkzeug=True)
