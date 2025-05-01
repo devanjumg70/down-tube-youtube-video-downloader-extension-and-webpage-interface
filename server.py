@@ -6,16 +6,30 @@ import tempfile
 import logging
 import time
 import uuid
+import subprocess
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*", "allow_headers": "*", "expose_headers": "*"}})
+CORS(app)
 
 # Temp directory for downloaded files
 TEMP_DIR = tempfile.gettempdir()
+
+# Check if ffmpeg is available
+def check_ffmpeg():
+    try:
+        subprocess.run(['ffmpeg', '-version'], check=True, capture_output=True)
+        logger.info("FFmpeg is available")
+        return True
+    except (subprocess.SubprocessError, FileNotFoundError):
+        logger.warning("FFmpeg is not available, falling back to yt-dlp merging")
+        return False
+
+# Global flag for FFmpeg availability
+FFMPEG_AVAILABLE = check_ffmpeg()
 
 # Add CORS headers to all responses
 @app.after_request
@@ -50,28 +64,20 @@ def get_video_info():
     url = f"https://www.youtube.com/watch?v={video_id}"
     
     logger.info(f"Received info request for video ID: {video_id}")
-    logger.info(f"Request headers: {dict(request.headers)}")
     
     ydl_opts = {
         "quiet": True,
         "skip_download": True,
         "forcejson": True,
-        "format": "best", # Request best format with both video and audio
     }
 
     try:
         with YoutubeDL(ydl_opts) as ydl:
-            logger.info(f"Extracting info for {url}")
             info = ydl.extract_info(url, download=False)
             
             # Filter formats to include only desired resolutions
             formats = []
             seen_qualities = set()
-            
-            # Log available formats for debugging
-            logger.info(f"Total formats available: {len(info['formats'])}")
-            for f in info["formats"]:
-                logger.debug(f"Format: {f.get('format_id')} - {f.get('ext')} - {f.get('height')}p - Audio: {'yes' if f.get('acodec') != 'none' else 'no'}")
             
             # First add combined formats that include both video and audio
             for f in info["formats"]:
@@ -84,12 +90,10 @@ def get_video_info():
                                 "itag": f["format_id"],
                                 "qualityLabel": f"{quality} (with audio)",
                                 "container": f["ext"],
-                                "url": f.get("url", ""),
                                 "has_audio": True,
                                 "has_video": True
                             })
                             seen_qualities.add(quality)
-                            logger.info(f"Added combined format: {f['format_id']} - {quality}")
             
             # Then add video-only formats for higher quality options
             # (we'll combine with audio when downloading)
@@ -103,27 +107,24 @@ def get_video_info():
                             "itag": f["format_id"],
                             "qualityLabel": quality,
                             "container": "mp4",
-                            "url": f.get("url", ""),
                             "has_audio": False,
                             "has_video": True
                         })
                         seen_qualities.add(key)
-                        logger.info(f"Added video-only format: {f['format_id']} - {quality}")
             
-            # Finally add audio-only format
+            # Finally add audio-only format (mp4 if available)
             for f in info["formats"]:
                 if f.get("vcodec") == "none" and f.get("acodec") != "none":
                     if "audio" not in seen_qualities:
+                        audio_ext = "m4a" if f["ext"] == "m4a" else f["ext"]
                         formats.append({
                             "itag": f["format_id"],
                             "qualityLabel": "Audio Only",
-                            "container": f["ext"],
-                            "url": f.get("url", ""),
+                            "container": audio_ext,
                             "has_audio": True,
                             "has_video": False
                         })
                         seen_qualities.add("audio")
-                        logger.info(f"Added audio-only format: {f['format_id']}")
                         break  # Just take the first good audio format
             
             # Sort formats by quality (higher resolution first)
@@ -131,13 +132,12 @@ def get_video_info():
                          int(x["qualityLabel"].replace("p", "").replace(" (with audio)", "")), 
                          reverse=True)
             
-            logger.info(f"Returning {len(formats)} filtered formats for video: {info.get('title')}")
-            
             return jsonify({
                 "title": info.get("title", "YouTube Video"),
                 "channel": info.get("uploader", "YouTube Channel"),
                 "thumbnail": info.get("thumbnail", f"https://i.ytimg.com/vi/{video_id}/maxresdefault.jpg"),
-                "formats": formats
+                "formats": formats,
+                "ffmpeg_available": FFMPEG_AVAILABLE
             })
     except Exception as e:
         logger.error(f"Error extracting video info: {str(e)}")
@@ -147,15 +147,25 @@ def get_video_info():
 def download():
     video_id = request.args.get("videoId")
     itag = request.args.get("itag")
+    use_ffmpeg = request.args.get("use_ffmpeg", "false").lower() == "true"
     
     if not video_id or not itag:
         return jsonify({"error": "Missing video ID or format ID"}), 400
     
     url = f"https://www.youtube.com/watch?v={video_id}"
-    logger.info(f"Download request for video ID: {video_id}, format: {itag}")
+    logger.info(f"Download request for video ID: {video_id}, format: {itag}, use_ffmpeg: {use_ffmpeg}")
     
-    # Create a unique filename for this download
+    # Create unique filenames for this download
     file_id = str(uuid.uuid4())
+    
+    # If we have FFmpeg and user requested it, use FFmpeg for merging
+    if FFMPEG_AVAILABLE and use_ffmpeg:
+        return download_with_ffmpeg(url, video_id, itag, file_id)
+    else:
+        return download_with_ytdlp(url, video_id, itag, file_id)
+
+def download_with_ytdlp(url, video_id, itag, file_id):
+    """Download and process using yt-dlp's built-in merging capability"""
     output_path = os.path.join(TEMP_DIR, f"youtube_{video_id}_{file_id}.mp4")
     
     # Set up options for yt-dlp
@@ -164,16 +174,12 @@ def download():
         "merge_output_format": "mp4",        # Force mp4 for compatibility
         "outtmpl": output_path,              # Output filename template
         "quiet": True,                       # Don't print progress
-        "no_warnings": True,                 # Don't print warnings
-        "progress_hooks": [lambda d: logger.info(f"Download progress: {d.get('status')} - {d.get('_percent_str', 'N/A')}")],
     }
     
     try:
-        logger.info(f"Starting download with options: {ydl_opts}")
+        logger.info(f"Starting download with yt-dlp...")
         with YoutubeDL(ydl_opts) as ydl:
-            logger.info(f"Downloading {url}")
             info = ydl.extract_info(url, download=True)
-            logger.info(f"Download completed: {output_path}")
             
             # Get video info for filename
             title = info.get('title', 'video').replace(' ', '_')
@@ -182,182 +188,238 @@ def download():
             
             # Check if the file was actually created
             if not os.path.exists(output_path):
-                logger.error(f"Download failed: File not created at {output_path}")
+                logger.error(f"Download failed: File not created")
                 return jsonify({"error": "Download failed"}), 500
             
             # Log file size for debugging
             file_size = os.path.getsize(output_path)
             logger.info(f"File size: {file_size} bytes")
             
-            # Stream the file to client and delete after sending
-            @app.after_request
-            def cleanup(response):
-                # Clean up the temporary file after sending
-                # Wait briefly to ensure file isn't still being accessed
-                if os.path.exists(output_path):
-                    try:
-                        time.sleep(1)  # Give a small delay before cleanup
-                        os.remove(output_path)
-                        logger.info(f"Temporary file removed: {output_path}")
-                    except Exception as e:
-                        logger.error(f"Error removing temporary file: {str(e)}")
-                return response
-            
             # Return the file
-            logger.info(f"Sending file to client: {title}.mp4")
-            return send_file(
+            response = send_file(
                 output_path,
                 as_attachment=True,
                 download_name=f"{title}.mp4",
                 mimetype="video/mp4"
             )
             
+            # Clean up temporary file after response is sent
+            @response.call_on_close
+            def cleanup():
+                try:
+                    if os.path.exists(output_path):
+                        os.remove(output_path)
+                        logger.info(f"Temporary file removed: {output_path}")
+                except Exception as e:
+                    logger.error(f"Error removing file: {str(e)}")
+            
+            return response
+            
     except Exception as e:
         logger.error(f"Download error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+def download_with_ffmpeg(url, video_id, itag, file_id):
+    """Download video and audio separately and merge with FFmpeg"""
+    # Create temporary paths for video, audio, and output
+    temp_video = os.path.join(TEMP_DIR, f"video_{video_id}_{file_id}.mp4")
+    temp_audio = os.path.join(TEMP_DIR, f"audio_{video_id}_{file_id}.m4a")
+    output_path = os.path.join(TEMP_DIR, f"merged_{video_id}_{file_id}.mp4")
+    
+    try:
+        # First get info to get title
+        with YoutubeDL({"quiet": True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+            title = info.get('title', 'video').replace(' ', '_')
+            # Sanitize filename
+            title = "".join(c for c in title if c.isalnum() or c in [' ', '_', '-']).rstrip()
+        
+        # Download video
+        video_opts = {
+            "format": itag,
+            "outtmpl": temp_video,
+            "quiet": True,
+        }
+        logger.info(f"Downloading video stream with format {itag}")
+        with YoutubeDL(video_opts) as ydl:
+            ydl.download([url])
+        
+        # Download audio
+        audio_opts = {
+            "format": "bestaudio[ext=m4a]",
+            "outtmpl": temp_audio,
+            "quiet": True,
+        }
+        logger.info("Downloading audio stream")
+        with YoutubeDL(audio_opts) as ydl:
+            ydl.download([url])
+        
+        # Check if files exist
+        if not os.path.exists(temp_video) or not os.path.exists(temp_audio):
+            logger.error("Video or audio file not downloaded correctly")
+            return jsonify({"error": "Failed to download video or audio streams"}), 500
+        
+        # Merge with FFmpeg
+        logger.info("Merging video and audio with FFmpeg")
+        ffmpeg_cmd = [
+            'ffmpeg', 
+            '-i', temp_video, 
+            '-i', temp_audio, 
+            '-c:v', 'copy', 
+            '-c:a', 'aac', 
+            '-strict', 'experimental',
+            output_path
+        ]
+        subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
+        
+        # Check if merged file exists
+        if not os.path.exists(output_path):
+            logger.error("FFmpeg merging failed")
+            return jsonify({"error": "Failed to merge video and audio streams"}), 500
+        
+        # Log success
+        file_size = os.path.getsize(output_path)
+        logger.info(f"Merged file created: {output_path}, size: {file_size} bytes")
+        
+        # Return the merged file
+        response = send_file(
+            output_path,
+            as_attachment=True,
+            download_name=f"{title}.mp4",
+            mimetype="video/mp4"
+        )
+        
+        # Clean up temporary files after response is sent
+        @response.call_on_close
+        def cleanup():
+            try:
+                for file_path in [temp_video, temp_audio, output_path]:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        logger.info(f"Removed temporary file: {file_path}")
+            except Exception as e:
+                logger.error(f"Error removing files: {str(e)}")
+        
+        return response
+        
+    except subprocess.SubprocessError as e:
+        logger.error(f"FFmpeg error: {str(e)}")
+        return jsonify({"error": f"FFmpeg error: {str(e)}"}), 500
+    except Exception as e:
+        logger.error(f"Error in FFmpeg workflow: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/")
 def hello():
-    html = """
+    # Simple static HTML
+    ffmpeg_status = "available" if FFMPEG_AVAILABLE else "not available"
+    html = f"""
     <!DOCTYPE html>
     <html>
     <head>
-        <title>YouTube Downloader API Test</title>
+        <title>YouTube Video Downloader</title>
         <style>
-            body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #f8f8f8; }
-            h1 { color: #c00; text-align: center; }
-            .form-group { margin-bottom: 15px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-            input[type="text"] { width: 70%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
-            button { padding: 10px 20px; background: #c00; color: white; border: none; cursor: pointer; border-radius: 4px; }
-            button:hover { background: #a00; }
-            #result { margin-top: 20px; padding: 20px; border-radius: 8px; background: white; min-height: 100px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-            pre { white-space: pre-wrap; background: #f5f5f5; padding: 10px; border-radius: 4px; }
-            .video-info { display: flex; flex-direction: column; align-items: center; }
-            .video-thumbnail { max-width: 320px; margin: 10px 0; border-radius: 4px; }
-            .download-buttons { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; }
-            .download-btn { padding: 8px 15px; background: #2a76dd; color: white; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; }
-            .download-btn:hover { background: #1c5bb9; }
-            .note { background: #fff3cd; padding: 10px; border-left: 4px solid #ffc107; margin: 10px 0; }
+            body {{ font-family: Arial, sans-serif; margin: 0 auto; padding: 20px; max-width: 800px; }}
+            h1 {{ color: #c00; text-align: center; }}
+            .form-group {{ padding: 15px; background: #f8f8f8; border-radius: 5px; margin-bottom: 20px; }}
+            input[type="text"] {{ width: 70%; padding: 8px; }}
+            button {{ padding: 8px 15px; background: #c00; color: white; border: none; cursor: pointer; }}
+            .video-info {{ text-align: center; }}
+            .video-thumbnail {{ max-width: 320px; }}
+            .download-btn {{ display: inline-block; margin: 5px; padding: 8px 15px; background: #2a76dd; color: white; 
+                           text-decoration: none; border-radius: 4px; }}
+            .status {{ padding: 3px 8px; border-radius: 3px; font-weight: bold; }}
+            .available {{ background: #d4edda; color: #155724; }}
+            .unavailable {{ background: #f8d7da; color: #721c24; }}
         </style>
     </head>
     <body>
-        <h1>YouTube Downloader API Test</h1>
-        <p>This page allows you to test the YouTube Downloader API directly.</p>
-        
-        <div class="note">
-            <strong>Note:</strong> This version now properly combines video and audio streams.
-            Downloads will take slightly longer as the server needs to process the files.
-        </div>
+        <h1>YouTube Video Downloader</h1>
         
         <div class="form-group">
-            <label>YouTube Video ID or URL:</label><br>
-            <input type="text" id="videoInput" placeholder="e.g., dQw4w9WgXcQ or https://www.youtube.com/watch?v=dQw4w9WgXcQ">
-            <button id="testBtn">Test API</button>
+            <p><strong>System Status:</strong> FFmpeg is <span class="status {("available" if FFMPEG_AVAILABLE else "unavailable")}">{ffmpeg_status}</span></p>
+            <p>Enter a YouTube URL or video ID:</p>
+            <input type="text" id="videoInput" placeholder="https://www.youtube.com/watch?v=dQw4w9WgXcQ">
+            <button id="testBtn">Fetch Video</button>
+            <br>
+            <label><input type="checkbox" id="useFFmpeg"> Use FFmpeg for merging (if available locally)</label>
         </div>
         
         <div id="result">
-            <p>Results will appear here...</p>
+            <p>Enter a YouTube URL above and click "Fetch Video"</p>
         </div>
         
         <script>
-            document.getElementById('testBtn').addEventListener('click', async () => {
-                const input = document.getElementById('videoInput').value.trim();
-                const resultDiv = document.getElementById('result');
+        document.getElementById('testBtn').addEventListener('click', async () => {{
+            const input = document.getElementById('videoInput').value.trim();
+            const resultDiv = document.getElementById('result');
+            
+            if (!input) {{
+                resultDiv.innerHTML = '<p style="color:red">Please enter a YouTube URL</p>';
+                return;
+            }}
+            
+            resultDiv.innerHTML = '<p>Loading video information...</p>';
+            
+            try {{
+                // Extract video ID
+                let videoId = input;
+                if (input.includes('watch?v=')) {{
+                    const match = input.match(/[?&]v=([^&#]*)/);
+                    if (match && match[1]) {{
+                        videoId = match[1];
+                    }}
+                }} else if (input.includes('youtu.be/')) {{
+                    const match = input.match(/youtu\\.be\\/([^?&#]*)/);
+                    if (match && match[1]) {{
+                        videoId = match[1];
+                    }}
+                }}
                 
-                if (!input) {
-                    resultDiv.innerHTML = '<p style="color: red;">Please enter a YouTube Video ID or URL</p>';
+                const response = await fetch(`/api/info?videoId=${{encodeURIComponent(videoId)}}`);
+                const data = await response.json();
+                
+                if (data.error) {{
+                    resultDiv.innerHTML = `<p style="color:red">Error: ${{data.error}}</p>`;
                     return;
-                }
+                }}
                 
-                resultDiv.innerHTML = '<div style="text-align: center; padding: 20px;"><div class="spinner" style="border: 4px solid #f3f3f3; border-top: 4px solid #c00; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 0 auto;"></div><p>Loading video information...</p></div>';
+                // Get FFmpeg setting
+                const useFFmpeg = document.getElementById('useFFmpeg').checked;
                 
-                try {
-                    // Simple extraction of video ID from URL
-                    let videoId = input;
-                    if (input.includes('watch?v=')) {
-                        const match = input.match(/[\?&]v=([^&#]*)/);
-                        if (match && match[1]) {
-                            videoId = match[1];
-                        }
-                    } else if (input.includes('youtu.be/')) {
-                        const match = input.match(/youtu\.be\/(.*?)(\?|$)/);
-                        if (match && match[1]) {
-                            videoId = match[1];
-                        }
-                    }
-                    
-                    const response = await fetch(`/api/info?videoId=${encodeURIComponent(videoId)}`);
-                    const data = await response.json();
-                    
-                    if (data.error) {
-                        resultDiv.innerHTML = `
-                            <div style="color: red; text-align: center;">
-                                <h3>Error</h3>
-                                <p>${data.error}</p>
-                            </div>
-                        `;
-                        return;
-                    }
-                    
-                    // Create a nicer display of the video info
-                    let formatsHtml = '';
-                    if (data.formats && data.formats.length > 0) {
-                        formatsHtml = '<div class="download-buttons">';
-                        data.formats.forEach(format => {
-                            formatsHtml += `
-                                <a 
-                                    href="/api/download?videoId=${encodeURIComponent(videoId)}&itag=${format.itag}" 
-                                    class="download-btn" 
-                                    target="_blank"
-                                >
-                                    Download ${format.qualityLabel} (${format.container})
-                                </a>
-                            `;
-                        });
-                        formatsHtml += '</div>';
-                    }
-                    
-                    resultDiv.innerHTML = `
-                        <div class="video-info">
-                            <h2>${data.title || 'Unknown Title'}</h2>
-                            <p>${data.channel || 'Unknown Channel'}</p>
-                            <img src="${data.thumbnail}" alt="Video thumbnail" class="video-thumbnail">
-                            <h3>Available Download Options:</h3>
-                            ${formatsHtml || '<p>No download options available</p>'}
-                        </div>
-                        <div style="margin-top: 20px;">
-                            <details>
-                                <summary>Show Raw API Response</summary>
-                                <pre>${JSON.stringify(data, null, 2)}</pre>
-                            </details>
-                        </div>
-                    `;
-                } catch (error) {
-                    resultDiv.innerHTML = `
-                        <div style="color: red; text-align: center;">
-                            <h3>Error</h3>
-                            <p>${error.message}</p>
-                        </div>
-                    `;
-                }
-            });
-            
-            // Add keyboard event listener for Enter key
-            document.getElementById('videoInput').addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    document.getElementById('testBtn').click();
-                }
-            });
-            
-            // Style for the spinner animation
-            const style = document.createElement('style');
-            style.textContent = `
-                @keyframes spin {
-                    0% { transform: rotate(0deg); }
-                    100% { transform: rotate(360deg); }
-                }
-            `;
-            document.head.appendChild(style);
+                // Create download buttons
+                let buttonsHtml = '';
+                if (data.formats && data.formats.length > 0) {{
+                    data.formats.forEach(format => {{
+                        buttonsHtml += `<a class="download-btn" 
+                           href="/api/download?videoId=${{encodeURIComponent(videoId)}}&itag=${{format.itag}}&use_ffmpeg=${{useFFmpeg}}"
+                           target="_blank">
+                           Download ${{format.qualityLabel}} (${{format.container}})
+                        </a> `;
+                    }});
+                }}
+                
+                // Display video info
+                resultDiv.innerHTML = `
+                    <div class="video-info">
+                        <h2>${{data.title || 'Unknown Title'}}</h2>
+                        <p>${{data.channel || 'Unknown Channel'}}</p>
+                        <img src="${{data.thumbnail}}" class="video-thumbnail">
+                        <h3>Available Download Options:</h3>
+                        <div>${{buttonsHtml || 'No formats available'}}</div>
+                    </div>
+                `;
+            }} catch (error) {{
+                resultDiv.innerHTML = `<p style="color:red">Error: ${{error.message}}</p>`;
+            }}
+        }});
+        
+        // Enter key event listener
+        document.getElementById('videoInput').addEventListener('keypress', (e) => {{
+            if (e.key === 'Enter') {{
+                document.getElementById('testBtn').click();
+            }}
+        }});
         </script>
     </body>
     </html>
@@ -365,7 +427,6 @@ def hello():
     return html
 
 if __name__ == "__main__":
-    # Use port 5000 by default (Replit's standard publicly accessible port)
     port = 5000
     print(f"YouTube Downloader API Server running on port {port}")
     app.run(host="0.0.0.0", port=port)

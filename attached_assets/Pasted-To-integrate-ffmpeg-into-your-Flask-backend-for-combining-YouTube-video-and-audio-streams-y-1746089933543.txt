@@ -1,0 +1,133 @@
+To integrate **ffmpeg** into your **Flask backend** for combining YouTube video and audio streams, you'll need to follow these steps:
+
+### **1. Install FFmpeg on the Backend**
+Since you’ve already downloaded **ffmpeg** and added it to the system path, it should be accessible globally. Ensure that it is accessible by running the following command in your terminal to verify:
+```bash
+ffmpeg -version
+```
+This should return the version of ffmpeg installed. If this works, then FFmpeg is ready to be used in your Flask server.
+
+### **2. Modify Backend to Use FFmpeg for Video/Audio Merging**
+
+In your backend, after extracting the video and audio streams using **yt-dlp**, you can use **ffmpeg** to combine them into a single video file. Here's how you can set this up:
+
+#### a. Install Necessary Python Libraries
+You’ll need the `subprocess` library to call **ffmpeg** from Python, and **yt-dlp** for downloading YouTube content. If not already installed, use:
+```bash
+pip install yt-dlp
+```
+
+#### b. Backend Code to Merge Video and Audio
+Update your backend to use **ffmpeg** for merging video and audio streams. Here’s a basic example of how you can do this in Flask:
+
+```python
+import os
+import yt_dlp
+import subprocess
+from flask import Flask, jsonify, send_file, request
+
+app = Flask(__name__)
+
+# Path where you want to save downloaded video files
+DOWNLOAD_PATH = 'downloads/'
+
+@app.route('/api/info', methods=['GET'])
+def get_video_info():
+    video_url = request.args.get('url')
+    with yt_dlp.YoutubeDL() as ydl:
+        info = ydl.extract_info(video_url, download=False)
+    formats = info.get('formats', [])
+    return jsonify(formats)
+
+@app.route('/api/download', methods=['GET'])
+def download_video():
+    video_url = request.args.get('url')
+    resolution = request.args.get('resolution', '1080p')  # Default to 1080p
+    video_file = os.path.join(DOWNLOAD_PATH, 'video.mp4')
+    audio_file = os.path.join(DOWNLOAD_PATH, 'audio.mp3')
+
+    # Use yt-dlp to download video and audio separately
+    ydl_opts = {
+        'format': f'bestvideo[height<={resolution}]',
+        'outtmpl': video_file,
+        'noplaylist': True,
+        'quiet': True
+    }
+    ydl_opts_audio = {
+        'format': 'bestaudio',
+        'outtmpl': audio_file,
+        'noplaylist': True,
+        'quiet': True
+    }
+
+    # Download video
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([video_url])
+
+    # Download audio
+    with yt_dlp.YoutubeDL(ydl_opts_audio) as ydl:
+        ydl.download([video_url])
+
+    # Combine video and audio using ffmpeg
+    merged_file = os.path.join(DOWNLOAD_PATH, 'merged_video.mp4')
+    ffmpeg_command = [
+        'ffmpeg', '-i', video_file, '-i', audio_file, '-c:v', 'copy', '-c:a', 'aac', '-strict', 'experimental', merged_file
+    ]
+    
+    subprocess.run(ffmpeg_command, check=True)  # Run FFmpeg command to merge
+
+    # Clean up temporary files (video and audio)
+    os.remove(video_file)
+    os.remove(audio_file)
+
+    # Return the merged file for download
+    return send_file(merged_file, as_attachment=True)
+
+if __name__ == '__main__':
+    app.run(port=5000)
+```
+
+### **Explanation of the Code:**
+- **yt-dlp** is used to download the video and audio streams separately.
+  - The `video` stream is downloaded with the highest available resolution (e.g., `1080p`).
+  - The `audio` stream is downloaded as the best audio quality available.
+- **FFmpeg** merges the downloaded video and audio files.
+  - The command `ffmpeg -i video.mp4 -i audio.mp3 -c:v copy -c:a aac output.mp4` is used to merge the video and audio files, where:
+    - `-i video.mp4` and `-i audio.mp3` specify the input files.
+    - `-c:v copy` tells ffmpeg to copy the video stream without re-encoding.
+    - `-c:a aac` specifies that the audio should be encoded to AAC format.
+    - `-strict experimental` is required to enable the AAC codec in some cases.
+- After merging, the video is returned to the user using `send_file` for download.
+- Temporary files (video and audio) are deleted after merging to save space.
+
+### **3. Modify the Extension to Use the Merged Video Endpoint**
+In your Chrome extension, when the user requests a video download, update the API call to point to your Flask endpoint (`/api/download`). Here’s a basic implementation in the background script (`background.js`):
+
+```javascript
+function downloadVideo(videoUrl, resolution = '1080p') {
+    const apiUrl = `http://localhost:5000/api/download?url=${encodeURIComponent(videoUrl)}&resolution=${resolution}`;
+    
+    fetch(apiUrl)
+        .then(response => response.blob())
+        .then(blob => {
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'video.mp4';  // Default filename
+            link.click();
+        })
+        .catch(error => {
+            console.error('Error downloading video:', error);
+        });
+}
+```
+
+This code will send the request to the Flask backend, where the video and audio are merged, and then trigger the download once the merged file is ready.
+
+### **4. Testing and Debugging**
+- Ensure that **ffmpeg** is correctly installed and accessible from Python by running `subprocess.run(['ffmpeg', '-version'])` from the Flask server.
+- Use browser developer tools (Console and Network tab) to debug any issues with the extension and server communication.
+- Test with different resolutions and formats to ensure everything works as expected.
+
+---
+
+Now, your extension should be able to download videos from YouTube with both video and audio properly merged! Would you like to proceed with any specific part of the setup or need further clarification?
