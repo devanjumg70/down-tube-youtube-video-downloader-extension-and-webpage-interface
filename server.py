@@ -1204,13 +1204,13 @@ def hello():
         const isDarkMode = localStorage.getItem('darkMode') === 'true';
         
         // Apply dark mode if it was previously enabled
-        if (isDarkMode) {{
+        if (isDarkMode) {
             body.classList.add('dark-mode');
             themeToggle.innerHTML = '<i class="fas fa-sun"></i>';
-        }}
+        }
         
         // Toggle dark mode when the button is clicked
-        themeToggle.addEventListener('click', function() {{
+        themeToggle.addEventListener('click', function() {
             body.classList.toggle('dark-mode');
             
             // Update localStorage with the current theme preference
@@ -1221,15 +1221,15 @@ def hello():
             themeToggle.innerHTML = isDark ? 
               '<i class="fas fa-sun"></i>' : 
               '<i class="fas fa-moon"></i>';
-        }});
+        });
             
-        document.getElementById('fetchBtn').addEventListener('click', async () => {{
+        document.getElementById('fetchBtn').addEventListener('click', async () => {
             const input = document.getElementById('videoInput').value.trim();
             const resultDiv = document.getElementById('result');
             const loader = document.querySelector('.loader');
             const infoMessage = document.querySelector('.info-message');
             
-            if (!input) {{
+            if (!input) {
                 resultDiv.innerHTML = `
                     <div class="error-msg">
                         <i class="fas fa-exclamation-circle"></i>
@@ -1240,7 +1240,7 @@ def hello():
                     </div>
                 `;
                 return;
-            }}
+            }
             
             // Show loader, hide info message
             if (loader) loader.style.display = 'flex';
@@ -1254,41 +1254,41 @@ def hello():
                 </div>
             `;
             
-            try {{
+            try {
                 // Extract video ID
                 let videoId = input;
-                if (input.includes('watch?v=')) {{
+                if (input.includes('watch?v=')) {
                     const match = input.match(/[?&]v=([^&#]*)/);
-                    if (match && match[1]) {{
+                    if (match && match[1]) {
                         videoId = match[1];
-                    }}
-                }} else if (input.includes('youtu.be/')) {{
+                    }
+                } else if (input.includes('youtu.be/')) {
                     const match = input.match(/youtu\\.be\\/([^?&#]*)/);
-                    if (match && match[1]) {{
+                    if (match && match[1]) {
                         videoId = match[1];
-                    }}
-                }}
+                    }
+                }
                 
-                const response = await fetch(`/api/info?videoId=${{encodeURIComponent(videoId)}}`);
+                const response = await fetch(`/api/info?videoId=${encodeURIComponent(videoId)}`);
                 const data = await response.json();
                 
-                if (data.error) {{
+                if (data.error) {
                     resultDiv.innerHTML = `
                         <div class="error-msg">
                             <i class="fas fa-exclamation-circle"></i>
-                            <span>Error: ${{data.error}}</span>
+                            <span>Error: ${data.error}</span>
                         </div>
                     `;
                     return;
-                }}
+                }
                 
                 // Get FFmpeg setting
                 const useFFmpeg = document.getElementById('useFFmpeg').checked;
                 
                 // Create download buttons
                 let buttonsHtml = '';
-                if (data.formats && data.formats.length > 0) {{
-                    data.formats.forEach(format => {{
+                if (data.formats && data.formats.length > 0) {
+                    data.formats.forEach(format => {
                         // Determine if this is an audio format
                         const isAudioOnly = format.qualityLabel.includes('Audio Only');
                         const buttonClass = isAudioOnly ? 'download-btn audio' : 'download-btn';
@@ -1296,17 +1296,17 @@ def hello():
                         
                         // Clean up format label for audio
                         let formatLabel = format.qualityLabel;
-                        if (formatLabel.includes('(MP3)')) {{
+                        if (formatLabel.includes('(MP3)')) {
                             formatLabel = 'Audio Only (MP3)';
-                        }} else if (formatLabel.includes('(AAC)')) {{
+                        } else if (formatLabel.includes('(AAC)')) {
                             formatLabel = 'Audio Only (AAC)';
-                        }}
+                        }
                         
                         buttonsHtml += `
-                            <a class="${{buttonClass}}" 
-                               href="/api/download?videoId=${{encodeURIComponent(videoId)}}&itag=${{format.itag}}&use_ffmpeg=${{useFFmpeg}}"
+                            <a class="${buttonClass}" 
+                               href="/api/download?videoId=${encodeURIComponent(videoId)}&itag=${format.itag}&use_ffmpeg=${useFFmpeg}"
                                target="_blank">
-                               <i class="fas ${{icon}}"></i> ${{formatLabel}}
+                               <i class="fas ${icon}"></i> ${formatLabel}
                             </a>
                         `;
                     }});
@@ -1316,10 +1316,10 @@ def hello():
                 resultDiv.innerHTML = `
                     <div class="video-info">
                         <div class="video-details">
-                            <img src="${{data.thumbnail}}" class="video-thumbnail" alt="${{data.title}}">
+                            <img src="${data.thumbnail}" class="video-thumbnail" alt="${data.title}">
                             <div class="video-text">
-                                <h2>${{data.title || 'Unknown Title'}}</h2>
-                                <p><i class="fas fa-user"></i> ${{data.channel || 'Unknown Channel'}}</p>
+                                <h2>${data.title || 'Unknown Title'}</h2>
+                                <p><i class="fas fa-user"></i> ${data.channel || 'Unknown Channel'}</p>
                                 <p><i class="fas fa-info-circle"></i> Select your preferred format below</p>
                             </div>
                         </div>
@@ -1327,7 +1327,7 @@ def hello():
                         <div class="download-section">
                             <h3><i class="fas fa-download"></i> Available Download Options</h3>
                             <div class="download-grid">
-                                ${{buttonsHtml || '<p>No formats available</p>'}}
+                                ${buttonsHtml || '<p>No formats available</p>'}
                             </div>
                         </div>
                     </div>
