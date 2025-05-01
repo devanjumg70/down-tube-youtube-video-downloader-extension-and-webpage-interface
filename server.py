@@ -687,6 +687,24 @@ def download_with_ffmpeg(url, video_id, itag, file_id):
 
 @app.route("/")
 def hello():
+    # Load the template file and replace placeholders
+    ffmpeg_status = "available" if FFMPEG_AVAILABLE else "not available"
+    aria2c_status = "available" if ARIA2C_AVAILABLE else "not available"
+    
+    with open("template.html", "r") as f:
+        html = f.read()
+    
+    # Replace placeholders
+    html = html.replace("{ffmpeg_status}", ffmpeg_status)
+    html = html.replace("{aria2c_status}", aria2c_status)
+    html = html.replace("{ffmpeg_class}", "available" if FFMPEG_AVAILABLE else "unavailable")
+    html = html.replace("{aria2c_class}", "available" if ARIA2C_AVAILABLE else "unavailable")
+    html = html.replace("{ffmpeg_js_available}", "true" if FFMPEG_AVAILABLE else "false")
+    
+    return html
+
+# Keep the old HTML as a backup
+def hello_old():
     # Modern static HTML with improved UI
     ffmpeg_status = "available" if FFMPEG_AVAILABLE else "not available"
     aria2c_status = "available" if ARIA2C_AVAILABLE else "not available"
@@ -697,8 +715,9 @@ def hello():
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>YouTube Video Downloader</title>
-        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-        <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+        <!-- Using Material Symbols from Google instead of Font Awesome -->
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0">
+        <script src="https://cdn.socket.io/4.6.2/socket.io.min.js"></script>
         <style>
             /* YouTube inspired colors */
             :root {{
