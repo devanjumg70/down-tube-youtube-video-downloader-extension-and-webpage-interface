@@ -123,25 +123,64 @@ def get_video_info():
                         })
                         seen_qualities.add(key)
             
-            # Finally add audio-only format (mp4 if available)
+            # Finally add audio-only format (prioritize MP3 or AAC formats for better compatibility)
+            audio_format_found = False
+            
+            # First try to find mp3 format (most compatible)
             for f in info["formats"]:
-                if f.get("vcodec") == "none" and f.get("acodec") != "none":
+                if f.get("vcodec") == "none" and f.get("acodec") != "none" and f["ext"] == "mp3":
                     if "audio" not in seen_qualities:
-                        audio_ext = "m4a" if f["ext"] == "m4a" else f["ext"]
                         formats.append({
                             "itag": f["format_id"],
-                            "qualityLabel": "Audio Only",
-                            "container": audio_ext,
+                            "qualityLabel": "Audio Only (MP3)",
+                            "container": "mp3",
                             "has_audio": True,
                             "has_video": False
                         })
                         seen_qualities.add("audio")
-                        break  # Just take the first good audio format
+                        audio_format_found = True
+                        break
+            
+            # If no MP3, try to find m4a (AAC) - excellent quality and wide compatibility
+            if not audio_format_found:
+                for f in info["formats"]:
+                    if f.get("vcodec") == "none" and f.get("acodec") != "none" and f["ext"] == "m4a":
+                        if "audio" not in seen_qualities:
+                            formats.append({
+                                "itag": f["format_id"],
+                                "qualityLabel": "Audio Only (AAC)",
+                                "container": "m4a",
+                                "has_audio": True,
+                                "has_video": False
+                            })
+                            seen_qualities.add("audio")
+                            audio_format_found = True
+                            break
+            
+            # Fallback to any audio format if no MP3 or M4A found
+            if not audio_format_found:
+                for f in info["formats"]:
+                    if f.get("vcodec") == "none" and f.get("acodec") != "none":
+                        if "audio" not in seen_qualities:
+                            formats.append({
+                                "itag": f["format_id"],
+                                "qualityLabel": f"Audio Only ({f['ext'].upper()})",
+                                "container": f["ext"],
+                                "has_audio": True,
+                                "has_video": False
+                            })
+                            seen_qualities.add("audio")
+                            break
             
             # Sort formats by quality (higher resolution first)
-            formats.sort(key=lambda x: 0 if x["qualityLabel"] == "Audio Only" else 
-                         int(x["qualityLabel"].replace("p", "").replace(" (with audio)", "")), 
-                         reverse=True)
+            def format_sort_key(x):
+                if "Audio Only" in x["qualityLabel"]:
+                    return 0  # Audio formats at the bottom
+                else:
+                    # Extract the numerical part from resolution (e.g., "720p" -> 720)
+                    return int(x["qualityLabel"].replace("p", "").replace(" (with audio)", ""))
+                
+            formats.sort(key=format_sort_key, reverse=True)
             
             return jsonify({
                 "title": info.get("title", "YouTube Video"),
@@ -221,6 +260,42 @@ def download_with_ytdlp(url, video_id, itag, file_id):
     
     try:
         logger.info(f"Starting download with yt-dlp... (using aria2c: {ARIA2C_AVAILABLE})")
+        # Check if this is an audio-only format 
+        audio_only = False
+        audio_format = "mp3"  # Default to MP3 for audio-only
+        
+        try:
+            with YoutubeDL({"quiet": True, "skip_download": True}) as ydl:
+                info_check = ydl.extract_info(url, download=False)
+                for f in info_check["formats"]:
+                    if f["format_id"] == itag and f.get("vcodec") == "none" and f.get("acodec") != "none":
+                        audio_only = True
+                        audio_format = f["ext"]
+                        logger.info(f"Identified audio-only format with extension: {audio_format}")
+                        break
+        except Exception as e:
+            logger.warning(f"Error checking audio format: {str(e)}")
+            
+        # If this is an audio-only format, modify output path and options
+        if audio_only:
+            # If the original format is not mp3 or m4a, force mp3 output (better compatibility)
+            if audio_format not in ["mp3", "m4a"]:
+                audio_format = "mp3"
+                
+            # Update the output path to use the proper extension
+            output_path = os.path.join(TEMP_DIR, f"audio_{video_id}_{file_id}.{audio_format}")
+            
+            # For mp3 output, add postprocessors to ensure proper conversion
+            if audio_format == "mp3":
+                ydl_opts["postprocessors"] = [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                    'preferredquality': '192',
+                }]
+            
+            logger.info(f"Audio-only download with format: {audio_format}")
+            
+        # Perform the download
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             
@@ -238,12 +313,29 @@ def download_with_ytdlp(url, video_id, itag, file_id):
             file_size = os.path.getsize(output_path)
             logger.info(f"File size: {file_size} bytes")
             
+            # Set the correct MIME type and filename extension based on format
+            if audio_only:
+                if audio_format == "mp3":
+                    mimetype = "audio/mpeg"
+                    ext = "mp3"
+                elif audio_format == "m4a":
+                    mimetype = "audio/m4a"
+                    ext = "m4a"
+                else:
+                    mimetype = f"audio/{audio_format}"
+                    ext = audio_format
+                    
+                logger.info(f"Using audio MIME type: {mimetype}")
+            else:
+                mimetype = "video/mp4"
+                ext = "mp4"
+            
             # Return the file
             response = send_file(
                 output_path,
                 as_attachment=True,
-                download_name=f"{title}.mp4",
-                mimetype="video/mp4"
+                download_name=f"{title}.{ext}",
+                mimetype=mimetype
             )
             
             # Clean up temporary file after response is sent
@@ -263,33 +355,124 @@ def download_with_ytdlp(url, video_id, itag, file_id):
         return jsonify({"error": str(e)}), 500
 
 def download_with_ffmpeg(url, video_id, itag, file_id):
-    """Download video and audio separately and merge with FFmpeg"""
+    """Download video and audio separately and merge with FFmpeg, or handle audio-only formats"""
+    # First check if this is an audio-only format
+    audio_only = False
+    audio_format = "mp3"  # Default audio format is MP3 for better compatibility
+    
+    try:
+        # Quick info check to identify audio-only or combined formats
+        with YoutubeDL({"quiet": True, "skip_download": True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+            for f in info["formats"]:
+                if f["format_id"] == itag:
+                    # Check for audio-only format
+                    if f.get("vcodec") == "none" and f.get("acodec") != "none":
+                        audio_only = True
+                        logger.info(f"Identified audio-only format with itag: {itag}")
+                        break
+                    # Check for combined format
+                    elif f.get("vcodec") != "none" and f.get("acodec") != "none":
+                        logger.info(f"Format {itag} already has both video and audio streams")
+                        # Use direct download for combined formats
+                        return download_with_ytdlp(url, video_id, itag, file_id)
+    
+    except Exception as e:
+        logger.warning(f"Error checking format type: {str(e)}")
+    
+    # If this is an audio-only format, download and convert directly to MP3
+    if audio_only:
+        logger.info(f"Processing audio-only format")
+        output_path = os.path.join(TEMP_DIR, f"audio_{video_id}_{file_id}.mp3")
+        
+        # Get info for title
+        with YoutubeDL({"quiet": True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+            title = info.get('title', 'audio').replace(' ', '_')
+            # Sanitize filename
+            title = "".join(c for c in title if c.isalnum() or c in [' ', '_', '-']).rstrip()
+        
+        # Download audio using yt-dlp
+        temp_audio = os.path.join(TEMP_DIR, f"temp_audio_{video_id}_{file_id}")
+        audio_opts = {
+            "quiet": True,
+            "format": itag,
+            "outtmpl": temp_audio
+        }
+        
+        # Add aria2c if available
+        if ARIA2C_AVAILABLE:
+            audio_opts.update({
+                "external_downloader": "aria2c",
+                "external_downloader_args": ["--max-connection-per-server=16", "--min-split-size=1M"]
+            })
+        
+        # Download the audio
+        with YoutubeDL(audio_opts) as ydl:
+            ydl.download([url])
+        
+        # Get actual filename (with extension) that yt-dlp created
+        temp_audio_file = None
+        for filename in os.listdir(TEMP_DIR):
+            if filename.startswith(f"temp_audio_{video_id}_{file_id}"):
+                temp_audio_file = os.path.join(TEMP_DIR, filename)
+                break
+        
+        if not temp_audio_file or not os.path.exists(temp_audio_file):
+            logger.error("Audio file not downloaded correctly")
+            return jsonify({"error": "Failed to download audio"}), 500
+        
+        # Convert to MP3 using FFmpeg
+        logger.info(f"Converting audio to MP3 format using FFmpeg")
+        ffmpeg_cmd = [
+            'ffmpeg',
+            '-hide_banner', '-nostats',
+            '-i', temp_audio_file,
+            '-vn',                       # No video
+            '-acodec', 'libmp3lame',     # Use MP3 codec
+            '-ab', '192k',               # 192k bitrate
+            '-metadata', f'title={title}',
+            output_path
+        ]
+        subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
+        
+        # Verify the output file exists
+        if not os.path.exists(output_path):
+            logger.error("FFmpeg audio conversion failed")
+            return jsonify({"error": "Failed to convert audio to MP3"}), 500
+        
+        # Return the MP3 file
+        file_size = os.path.getsize(output_path)
+        logger.info(f"Audio file created: {output_path}, size: {file_size} bytes")
+        
+        response = send_file(
+            output_path,
+            as_attachment=True,
+            download_name=f"{title}.mp3",
+            mimetype="audio/mpeg"
+        )
+        
+        # Clean up files after sending
+        @response.call_on_close
+        def cleanup():
+            try:
+                if os.path.exists(temp_audio_file):
+                    os.remove(temp_audio_file)
+                if os.path.exists(output_path):
+                    os.remove(output_path)
+                logger.info("Temporary audio files removed")
+            except Exception as e:
+                logger.error(f"Error removing files: {str(e)}")
+        
+        return response
+    
+    # This is a video format that needs audio - proceed with standard FFmpeg flow
     # Create temporary paths for video, audio, and output
     temp_video = os.path.join(TEMP_DIR, f"video_{video_id}_{file_id}.mp4")
     temp_audio = os.path.join(TEMP_DIR, f"audio_{video_id}_{file_id}.m4a")
     output_path = os.path.join(TEMP_DIR, f"merged_{video_id}_{file_id}.mp4")
     
     try:
-        # First check if the format already has audio (to avoid unnecessary processing)
-        has_both_streams = False
-        try:
-            # Quick info check to identify combined formats
-            with YoutubeDL({"quiet": True, "skip_download": True}) as ydl:
-                info = ydl.extract_info(url, download=False)
-                for f in info["formats"]:
-                    if f["format_id"] == itag and f.get("vcodec") != "none" and f.get("acodec") != "none":
-                        has_both_streams = True
-                        logger.info(f"Format {itag} already has both video and audio streams")
-                        break
-            
-            # If format already has both streams, use direct yt-dlp download
-            if has_both_streams:
-                logger.info("Using direct download since format already has both audio and video")
-                return download_with_ytdlp(url, video_id, itag, file_id)
-        
-        except Exception as e:
-            logger.warning(f"Error checking format streams: {str(e)}")
-        
         # Get video info for title
         with YoutubeDL({"quiet": True}) as ydl:
             info = ydl.extract_info(url, download=False)
