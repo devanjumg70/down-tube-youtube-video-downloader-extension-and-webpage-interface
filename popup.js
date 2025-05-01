@@ -1,6 +1,34 @@
 document.addEventListener('DOMContentLoaded', function() {
   console.log('Popup script loaded');
   
+  // Theme toggle functionality
+  const themeToggle = document.getElementById('theme-toggle');
+  const body = document.body;
+  const container = document.querySelector('.container');
+  
+  // Check if dark mode is enabled in localStorage
+  const isDarkMode = localStorage.getItem('darkMode') === 'true';
+  
+  // Apply dark mode if it was previously enabled
+  if (isDarkMode) {
+    body.classList.add('dark-mode');
+    themeToggle.innerHTML = '<i class="fas fa-sun"></i>';
+  }
+  
+  // Toggle dark mode when the button is clicked
+  themeToggle.addEventListener('click', function() {
+    body.classList.toggle('dark-mode');
+    
+    // Update localStorage with the current theme preference
+    const isDark = body.classList.contains('dark-mode');
+    localStorage.setItem('darkMode', isDark);
+    
+    // Change the icon based on the current theme
+    themeToggle.innerHTML = isDark ? 
+      '<i class="fas fa-sun"></i>' : 
+      '<i class="fas fa-moon"></i>';
+  });
+  
   // Elements
   const videoUrlInput = document.getElementById('video-url');
   const fetchBtn = document.getElementById('fetch-btn');

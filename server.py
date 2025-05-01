@@ -587,20 +587,50 @@ def hello():
         <title>YouTube Video Downloader</title>
         <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
         <style>
+            /* YouTube inspired colors */
             :root {{
-                --primary-color: #ff4b4b;
-                --primary-hover: #e63e3e;
-                --secondary-color: #4285f4;
-                --secondary-hover: #3367d6;
-                --text-dark: #2d3748;
-                --text-light: #718096;
-                --bg-light: #f8fafc;
-                --bg-white: #ffffff;
-                --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                --youtube-red: #ff0000;
+                --youtube-red-hover: #cc0000;
+                --youtube-blue: #065fd4;
+                --youtube-blue-hover: #0547a5;
+                --youtube-dark: #212121;
+                --youtube-white: #ffffff;
+                --youtube-light-bg: #f9f9f9;
+                --youtube-gray: #909090;
+                --youtube-light-gray: #e5e5e5;
+                
+                /* Theme variables - light mode default */
+                --primary-color: var(--youtube-red);
+                --primary-hover: var(--youtube-red-hover);
+                --secondary-color: var(--youtube-blue);
+                --secondary-hover: var(--youtube-blue-hover);
+                --text-dark: var(--youtube-dark);
+                --text-light: var(--youtube-gray);
+                --bg-light: var(--youtube-light-bg);
+                --bg-white: var(--youtube-white);
+                --bg-card: var(--youtube-white);
+                --shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
                 --border-radius: 8px;
-                --border-color: #e2e8f0;
-                --success-color: #48bb78;
-                --error-color: #f56565;
+                --border-color: var(--youtube-light-gray);
+                --success-color: #4caf50;
+                --error-color: var(--youtube-red);
+                
+                /* Animation speeds */
+                --transition-speed: 0.3s;
+            }}
+            
+            /* Dark mode styles */
+            .dark-mode {{
+                --primary-color: var(--youtube-red);
+                --primary-hover: var(--youtube-red-hover);
+                --secondary-color: var(--youtube-blue);
+                --secondary-hover: var(--youtube-blue-hover);
+                --text-dark: var(--youtube-white);
+                --text-light: #aaaaaa;
+                --bg-light: #181818;
+                --bg-white: #212121;
+                --bg-card: #303030;
+                --border-color: #383838;
             }}
             
             * {{
