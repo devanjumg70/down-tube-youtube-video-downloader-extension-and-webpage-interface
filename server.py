@@ -42,14 +42,6 @@ def check_aria2c():
 FFMPEG_AVAILABLE = check_ffmpeg()
 ARIA2C_AVAILABLE = check_aria2c()
 
-# YouTube cookie file path
-YOUTUBE_COOKIE_FILE = os.path.join(TEMP_DIR, 'youtube_cookies.txt')
-YOUTUBE_COOKIES_AVAILABLE = False
-
-# Check if YouTube cookies are available
-def check_youtube_cookies():
-    return os.path.exists(YOUTUBE_COOKIE_FILE) and os.path.getsize(YOUTUBE_COOKIE_FILE) > 0
-
 # Add CORS headers to all responses
 @app.after_request
 def add_cors_headers(response):
@@ -73,40 +65,6 @@ def extract_video_id(url):
     
     return url  # Already an ID
 
-@app.route("/api/upload-cookies", methods=["POST"])
-def upload_cookies():
-    """Upload YouTube cookies to help bypass anti-bot protection"""
-    
-    if "cookie_file" not in request.files:
-        return jsonify({"error": "No cookie file provided"}), 400
-    
-    cookie_file = request.files["cookie_file"]
-    
-    if cookie_file.filename == "":
-        return jsonify({"error": "No file selected"}), 400
-    
-    # Save the cookies to our designated file
-    try:
-        cookie_file.save(YOUTUBE_COOKIE_FILE)
-        global YOUTUBE_COOKIES_AVAILABLE
-        YOUTUBE_COOKIES_AVAILABLE = check_youtube_cookies()
-        
-        if YOUTUBE_COOKIES_AVAILABLE:
-            logger.info("YouTube cookies successfully uploaded and validated")
-            return jsonify({
-                "success": True, 
-                "message": "Cookie file uploaded successfully. Anti-bot protection should now be bypassed."
-            })
-        else:
-            logger.warning("Cookie file uploaded but validation failed")
-            return jsonify({
-                "success": False,
-                "error": "Cookie file uploaded but seems invalid. Please check the file format."
-            }), 400
-    except Exception as e:
-        logger.error(f"Error saving cookie file: {str(e)}")
-        return jsonify({"error": f"Error saving cookie file: {str(e)}"}), 500
-
 @app.route("/api/info")
 def get_video_info():
     video_id = request.args.get("videoId")
@@ -118,20 +76,11 @@ def get_video_info():
     
     logger.info(f"Received info request for video ID: {video_id}")
     
-    # Check if YouTube cookies are available
-    global YOUTUBE_COOKIES_AVAILABLE
-    YOUTUBE_COOKIES_AVAILABLE = check_youtube_cookies()
-    
     ydl_opts = {
         "quiet": True,
         "skip_download": True,
         "forcejson": True,
     }
-    
-    # Add cookies if available
-    if YOUTUBE_COOKIES_AVAILABLE:
-        logger.info("Using YouTube cookies for authentication")
-        ydl_opts["cookiefile"] = YOUTUBE_COOKIE_FILE
 
     try:
         with YoutubeDL(ydl_opts) as ydl:
@@ -280,17 +229,9 @@ def download_with_ytdlp(url, video_id, itag, file_id):
     
     # Check if a format has both video and audio streams
     has_both_streams = False
-    check_opts = {"quiet": True, "skip_download": True}
-    
-    # Add cookies if available
-    global YOUTUBE_COOKIES_AVAILABLE
-    YOUTUBE_COOKIES_AVAILABLE = check_youtube_cookies()
-    if YOUTUBE_COOKIES_AVAILABLE:
-        check_opts["cookiefile"] = YOUTUBE_COOKIE_FILE
-    
     try:
         # Quick info check to identify combined formats
-        with YoutubeDL(check_opts) as ydl:
+        with YoutubeDL({"quiet": True, "skip_download": True}) as ydl:
             info = ydl.extract_info(url, download=False)
             for f in info["formats"]:
                 if f["format_id"] == itag and f.get("vcodec") != "none" and f.get("acodec") != "none":
@@ -308,11 +249,6 @@ def download_with_ytdlp(url, video_id, itag, file_id):
         "outtmpl": output_path,              # Output filename template
         "quiet": True,                       # Don't print progress
     }
-    
-    # Add cookies if available
-    if YOUTUBE_COOKIES_AVAILABLE:
-        logger.info("Using YouTube cookies for authentication during download")
-        ydl_opts["cookiefile"] = YOUTUBE_COOKIE_FILE
     
     # If aria2c is available, use it for faster downloading
     if ARIA2C_AVAILABLE:
@@ -424,21 +360,9 @@ def download_with_ffmpeg(url, video_id, itag, file_id):
     audio_only = False
     audio_format = "mp3"  # Default audio format is MP3 for better compatibility
     
-    # Check if YouTube cookies are available
-    global YOUTUBE_COOKIES_AVAILABLE
-    YOUTUBE_COOKIES_AVAILABLE = check_youtube_cookies()
-    
-    # Setup the info check options
-    check_opts = {"quiet": True, "skip_download": True}
-    
-    # Add cookies if available
-    if YOUTUBE_COOKIES_AVAILABLE:
-        logger.info("Using YouTube cookies for authentication in FFmpeg workflow")
-        check_opts["cookiefile"] = YOUTUBE_COOKIE_FILE
-    
     try:
         # Quick info check to identify audio-only or combined formats
-        with YoutubeDL(check_opts) as ydl:
+        with YoutubeDL({"quiet": True, "skip_download": True}) as ydl:
             info = ydl.extract_info(url, download=False)
             for f in info["formats"]:
                 if f["format_id"] == itag:
@@ -1048,140 +972,6 @@ def hello():
                 background-color: var(--primary-hover);
             }}
             
-            /* Panel styles for cookie section */
-            .panel {{
-                border: 1px solid var(--border-color);
-                border-radius: var(--border-radius);
-                overflow: hidden;
-                background: white;
-                margin-bottom: 20px;
-            }}
-            
-            .panel-header {{
-                background-color: var(--bg-light);
-                padding: 12px 16px;
-                font-weight: 600;
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                cursor: pointer;
-                border-bottom: 1px solid var(--border-color);
-            }}
-            
-            .panel-header i {{
-                margin-right: 8px;
-                color: var(--primary-color);
-            }}
-            
-            .toggle-btn {{
-                background: none;
-                border: none;
-                color: var(--text-light);
-                cursor: pointer;
-                transition: transform 0.3s;
-            }}
-            
-            .toggle-btn.active {{
-                transform: rotate(180deg);
-            }}
-            
-            .panel-body {{
-                padding: 16px;
-            }}
-            
-            /* Steps container */
-            .steps-container {{
-                margin-top: 15px;
-            }}
-            
-            .step {{
-                display: flex;
-                margin-bottom: 18px;
-            }}
-            
-            .step-number {{
-                width: 28px;
-                height: 28px;
-                background-color: var(--primary-color);
-                color: white;
-                border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-weight: bold;
-                margin-right: 12px;
-                flex-shrink: 0;
-            }}
-            
-            .step-content {{
-                flex: 1;
-            }}
-            
-            .step-content h4 {{
-                margin-top: 0;
-                margin-bottom: 6px;
-                font-size: 16px;
-                color: var(--text-dark);
-            }}
-            
-            .step-content p {{
-                margin-top: 0;
-                font-size: 14px;
-                color: var(--text-light);
-            }}
-            
-            /* File upload styling */
-            .file-input-container {{
-                display: flex;
-                margin-top: 10px;
-                align-items: center;
-            }}
-            
-            .file-input-container input[type="file"] {{
-                flex: 1;
-                padding: 8px;
-                border: 1px solid var(--border-color);
-                border-radius: var(--border-radius) 0 0 var(--border-radius);
-            }}
-            
-            #uploadCookieBtn {{
-                background-color: var(--secondary-color);
-                color: white;
-                border: none;
-                padding: 8px 15px;
-                border-radius: 0 var(--border-radius) var(--border-radius) 0;
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-            }}
-            
-            #uploadCookieBtn i {{
-                margin-right: 6px;
-            }}
-            
-            #uploadCookieBtn:hover {{
-                background-color: var(--secondary-hover);
-            }}
-            
-            #cookieUploadResult {{
-                margin-top: 12px;
-                padding: 10px;
-                border-radius: var(--border-radius);
-                font-size: 14px;
-            }}
-            
-            .upload-success {{
-                background-color: rgba(72, 187, 120, 0.1);
-                color: var(--success-color);
-                border-left: 3px solid var(--success-color);
-            }}
-            
-            .upload-error {{
-                background-color: rgba(245, 101, 101, 0.1);
-                color: var(--error-color);
-                border-left: 3px solid var(--error-color);
-            }}
-            
             .error-msg {{
                 background-color: rgba(245, 101, 101, 0.1);
                 color: var(--error-color);
@@ -1238,7 +1028,7 @@ def hello():
                             <div class="status-content">
                                 <div class="status-name">
                                     FFmpeg
-                                    <span class="status-badge {'available' if FFMPEG_AVAILABLE else 'unavailable'}">
+                                    <span class="status-badge {("available" if FFMPEG_AVAILABLE else "unavailable")}">
                                         {ffmpeg_status}
                                     </span>
                                 </div>
@@ -1250,23 +1040,11 @@ def hello():
                             <div class="status-content">
                                 <div class="status-name">
                                     aria2c
-                                    <span class="status-badge {'available' if ARIA2C_AVAILABLE else 'unavailable'}">
+                                    <span class="status-badge {("available" if ARIA2C_AVAILABLE else "unavailable")}">
                                         {aria2c_status}
                                     </span>
                                 </div>
                                 <div class="status-note">Multi-threaded, faster downloads</div>
-                            </div>
-                        </div>
-                        <div class="status-item">
-                            <i class="fas fa-cookie" style="color: #9c64d6;"></i>
-                            <div class="status-content">
-                                <div class="status-name">
-                                    YouTube Cookies
-                                    <span class="status-badge {'available' if check_youtube_cookies() else 'unavailable'}" id="cookieStatus">
-                                        {('available' if check_youtube_cookies() else 'not available')}
-                                    </span>
-                                </div>
-                                <div class="status-note">Required to bypass anti-bot protection</div>
                             </div>
                         </div>
                     </div>
@@ -1283,58 +1061,12 @@ def hello():
                     
                     <div class="toggle-container">
                         <label class="toggle-switch">
-                            <input type="checkbox" id="useFFmpeg" {'checked' if FFMPEG_AVAILABLE else ''}>
+                            <input type="checkbox" id="useFFmpeg" {("checked" if FFMPEG_AVAILABLE else "")}>
                             <span class="toggle-slider"></span>
                         </label>
                         <span class="toggle-label">
                             <i class="fas fa-check-circle"></i> Use FFmpeg for better quality (recommended)
                         </span>
-                    </div>
-                </div>
-                
-                <div class="form-group" id="cookieSection">
-                    <div class="panel">
-                        <div class="panel-header">
-                            <i class="fas fa-cookie"></i> Anti-Bot Protection Bypass
-                            <button type="button" id="toggleCookieForm" class="toggle-btn">
-                                <i class="fas fa-chevron-down"></i>
-                            </button>
-                        </div>
-                        <div class="panel-body" id="cookieFormContainer" style="display: none;">
-                            <p>If you're seeing the "Sign in to confirm you're not a bot" error, you need to upload your YouTube cookies to bypass protection.</p>
-                            
-                            <div class="steps-container">
-                                <div class="step">
-                                    <div class="step-number">1</div>
-                                    <div class="step-content">
-                                        <h4>Sign in to YouTube in your browser</h4>
-                                        <p>Make sure you're logged into your YouTube account.</p>
-                                    </div>
-                                </div>
-                                <div class="step">
-                                    <div class="step-number">2</div>
-                                    <div class="step-content">
-                                        <h4>Export your cookies</h4>
-                                        <p>Use a browser extension like "Get cookies.txt" or "EditThisCookie" to export your YouTube cookies as a .txt file.</p>
-                                    </div>
-                                </div>
-                                <div class="step">
-                                    <div class="step-number">3</div>
-                                    <div class="step-content">
-                                        <h4>Upload the cookie file below</h4>
-                                        <form id="cookieForm" enctype="multipart/form-data">
-                                            <div class="file-input-container">
-                                                <input type="file" id="cookieFile" name="cookie_file" accept=".txt">
-                                                <button type="submit" id="uploadCookieBtn">
-                                                    <i class="fas fa-upload"></i> Upload Cookies
-                                                </button>
-                                            </div>
-                                        </form>
-                                        <div id="cookieUploadResult"></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
                     </div>
                 </div>
                 
@@ -1405,35 +1137,12 @@ def hello():
                 const data = await response.json();
                 
                 if (data.error) {{
-                    // Check if this is an anti-bot protection error
-                    const isAntiBot = data.error.includes('Sign in to confirm you') || 
-                                      data.error.includes('not a bot');
-                    
-                    let errorHtml = `
+                    resultDiv.innerHTML = `
                         <div class="error-msg">
                             <i class="fas fa-exclamation-circle"></i>
                             <span>Error: ${{data.error}}</span>
                         </div>
                     `;
-                    
-                    if (isAntiBot) {{
-                        // Show the cookie upload form when anti-bot error occurs
-                        const cookieFormContainer = document.getElementById('cookieFormContainer');
-                        const toggleCookieFormBtn = document.getElementById('toggleCookieForm');
-                        
-                        if (cookieFormContainer.style.display === 'none') {{
-                            cookieFormContainer.style.display = 'block';
-                            toggleCookieFormBtn.classList.add('active');
-                        }}
-                        
-                        errorHtml += `
-                            <div class="error-note" style="margin-top: 10px; font-size: 14px; color: var(--text-light);">
-                                <p><i class="fas fa-info-circle"></i> YouTube's anti-bot protection is active. Please upload your cookies using the form above to bypass this protection.</p>
-                            </div>
-                        `;
-                    }}
-                    
-                    resultDiv.innerHTML = errorHtml;
                     return;
                 }}
                 
@@ -1516,66 +1225,10 @@ def hello():
         }});
         
         // Disable FFmpeg toggle if not available
-        const ffmpegAvailable = {'true' if FFMPEG_AVAILABLE else 'false'};
-        if (!ffmpegAvailable) {{
+        if (!{FFMPEG_AVAILABLE}) {{
             document.getElementById('useFFmpeg').disabled = true;
             document.querySelector('.toggle-label').innerHTML += ' <span style="color: var(--error-color); font-size: 12px;">(Not available)</span>';
         }}
-        
-        // Cookie panel toggle
-        const toggleCookieFormBtn = document.getElementById('toggleCookieForm');
-        const cookieFormContainer = document.getElementById('cookieFormContainer');
-        
-        toggleCookieFormBtn.addEventListener('click', () => {{
-            const isHidden = cookieFormContainer.style.display === 'none';
-            cookieFormContainer.style.display = isHidden ? 'block' : 'none';
-            toggleCookieFormBtn.classList.toggle('active', isHidden);
-        }});
-        
-        // Handle cookie file upload
-        document.getElementById('cookieForm').addEventListener('submit', async (event) => {{
-            event.preventDefault();
-            
-            const formData = new FormData();
-            const fileInput = document.getElementById('cookieFile');
-            const resultDiv = document.getElementById('cookieUploadResult');
-            
-            if (!fileInput.files || !fileInput.files[0]) {{
-                resultDiv.className = 'upload-error';
-                resultDiv.textContent = 'Please select a cookie file to upload';
-                return;
-            }}
-            
-            formData.append('cookie_file', fileInput.files[0]);
-            
-            try {{
-                resultDiv.className = '';
-                resultDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading cookies...';
-                
-                const response = await fetch('/api/upload-cookies', {{
-                    method: 'POST',
-                    body: formData
-                }});
-                
-                const data = await response.json();
-                
-                if (response.ok && data.success) {{
-                    resultDiv.className = 'upload-success';
-                    resultDiv.innerHTML = '<i class="fas fa-check-circle"></i> ' + data.message;
-                    
-                    // Update cookie status indicator
-                    const cookieStatus = document.getElementById('cookieStatus');
-                    cookieStatus.className = 'status-badge available';
-                    cookieStatus.textContent = 'available';
-                }} else {{
-                    resultDiv.className = 'upload-error';
-                    resultDiv.innerHTML = '<i class="fas fa-exclamation-circle"></i> ' + (data.error || 'Error uploading cookies');
-                }}
-            }} catch (error) {{
-                resultDiv.className = 'upload-error';
-                resultDiv.innerHTML = '<i class="fas fa-exclamation-circle"></i> Network error: ' + error.message;
-            }}
-        }});
         </script>
     </body>
     </html>
