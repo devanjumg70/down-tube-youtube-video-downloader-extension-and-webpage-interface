@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video Downloader</title>
+  <link rel="stylesheet" href="popup.css">
+  <link href="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.css" rel="stylesheet">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Video Downloader</h1>
+      <p>Download videos in your preferred resolution</p>
+    </header>
+    
+    <div class="input-container">
+      <input type="text" id="video-url" placeholder="Paste YouTube URL here">
+      <button id="fetch-btn">Fetch Video</button>
+    </div>
+    
+    <div id="loader" class="hidden">
+      <div class="spinner"></div>
+      <p>Fetching video information...</p>
+    </div>
+    
+    <div id="error-container" class="hidden">
+      <p id="error-message"></p>
+    </div>
+    
+    <div id="video-info" class="hidden">
+      <div class="video-details">
+        <h2 id="video-title"></h2>
+        <p id="video-channel"></p>
+        <img id="video-thumbnail" src="" alt="Video thumbnail">
+      </div>
+      
+      <div class="download-options">
+        <h3>Available Resolutions:</h3>
+        <div id="resolution-buttons">
+          <!-- Resolution buttons will be added here dynamically -->
+        </div>
+      </div>
+    </div>
+    
+    <footer>
+      <p>Note: This extension works best with YouTube videos</p>
+    </footer>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
