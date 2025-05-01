@@ -90,7 +90,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 action: 'downloadVideo',
                 videoId: videoId,
                 itag: format.itag,
-                fileName: `${response.title} - ${format.qualityLabel}.${format.container}`
+                fileName: `${response.title} - ${format.qualityLabel}.${format.container}`,
+                downloadUrl: format.url // Pass the direct download URL from the server
               });
             });
             resolutionButtons.appendChild(button);

@@ -1,4 +1,4 @@
-modules = ["nodejs-20"]
+modules = ["nodejs-20", "python-3.11"]
 
 [nix]
 channel = "stable-24_05"
@@ -16,6 +16,10 @@ author = "agent"
 task = "workflow.run"
 args = "Chrome Extension Preview"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Video Downloader Server"
+
 [[workflows.workflow]]
 name = "Chrome Extension Preview"
 author = "agent"
@@ -24,5 +28,18 @@ author = "agent"
 task = "shell.exec"
 args = "npx web-ext run --source-dir=./ --start-url=\"https://www.youtube.com\" --target=chromium"
 
+[[workflows.workflow]]
+name = "Video Downloader Server"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python server.py"
+waitForPort = 5000
+
 [deployment]
 run = ["sh", "-c", "npx web-ext run --source-dir=./ --start-url=\"https://www.youtube.com\" --target=chromium"]
+
+[[ports]]
+localPort = 5000
+externalPort = 80

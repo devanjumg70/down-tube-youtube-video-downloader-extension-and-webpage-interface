@@ -1,0 +1,97 @@
+ here's a simple, fully working backend server using yt-dlp and Flask (Python) that can:
+
+Accept a YouTube URL or video ID.
+
+Return available formats (360p, 420p, 720p, 1080p).
+
+Provide direct download links.
+
+You can host this on Replit, Render, or your VPS.
+
+✅ Step 1: Create requirements.txt
+txt
+Copy
+Edit
+flask
+yt-dlp
+✅ Step 2: Create main.py
+python
+Copy
+Edit
+from flask import Flask, request, jsonify, redirect
+from yt_dlp import YoutubeDL
+import re
+
+app = Flask(__name__)
+
+# Clean input to extract video ID
+def extract_video_id(url):
+    match = re.search(r"(?:v=|youtu\.be/)([\w\-]{11})", url)
+    return match.group(1) if match else url  # fallback to direct ID
+
+@app.route("/api/info")
+def get_video_info():
+    video_id = extract_video_id(request.args.get("videoId", ""))
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    
+    ydl_opts = {
+        "quiet": True,
+        "skip_download": True,
+        "forcejson": True,
+    }
+
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            formats = [
+                {
+                    "itag": f["format_id"],
+                    "qualityLabel": f.get("format_note") or f.get("height", "unknown"),
+                    "ext": f["ext"],
+                    "url": f["url"]
+                }
+                for f in info["formats"]
+                if f["ext"] == "mp4" and f.get("height") in [360, 420, 720, 1080]
+            ]
+            return jsonify({
+                "title": info.get("title"),
+                "channel": info.get("uploader"),
+                "formats": formats
+            })
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+@app.route("/api/download")
+def download():
+    video_url = request.args.get("url")
+    if video_url:
+        return redirect(video_url)
+    return "Invalid URL", 400
+
+@app.route("/")
+def hello():
+    return "YouTube Downloader Backend Running"
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080)
+✅ Step 3: Deploy on Replit or Render
+🟢 On Replit:
+Create a new Replit → Python Flask.
+
+Add requirements.txt and paste the code in main.py.
+
+In .replit, set:
+
+ini
+Copy
+Edit
+run = "python3 main.py"
+Replit will give you a public URL like https://yourname.repl.co.
+
+🟢 On Render:
+Create new Web Service → Use GitHub repo with this code.
+
+Build command: pip install -r requirements.txt
+
+Start command: python main.py
+
