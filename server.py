@@ -33,6 +33,7 @@ def get_video_info():
         "quiet": True,
         "skip_download": True,
         "forcejson": True,
+        "format": "best", # Request best format with both video and audio
     }
 
     try:
@@ -96,26 +97,36 @@ def download():
     
     ydl_opts = {
         "quiet": True,
-        "format": itag,
+        "format": f"{itag}+bestaudio[ext=m4a]/best", # Request video format + audio, or best combined format
         "skip_download": True,
         "forcejson": True,
+        "merge_output_format": "mp4", # Ensure it's merged into mp4
     }
     
     try:
         with YoutubeDL(ydl_opts) as ydl:
+            # Extract info and get direct URL with combined audio and video
             info = ydl.extract_info(url, download=False)
             
-            # Find the requested format
-            format_url = None
+            # The URL might now be in a different location due to format merging
+            if info.get("url"):
+                # Direct URL is available for merged format
+                return redirect(info["url"])
+            elif info.get("requested_formats"):
+                # Check if we have the requested formats
+                for fmt in info.get("requested_formats", []):
+                    if fmt.get("format_id") == itag:
+                        if fmt.get("url"):
+                            return redirect(fmt["url"])
+            
+            # Fallback to searching in all formats
             for f in info.get("formats", []):
                 if f.get("format_id") == itag:
-                    format_url = f.get("url")
-                    break
+                    if f.get("url"):
+                        return redirect(f["url"])
             
-            if format_url:
-                return redirect(format_url)
-            else:
-                return jsonify({"error": "Format not found"}), 404
+            # If we reach here, we couldn't find the format
+            return jsonify({"error": "Format not found or could not be merged with audio"}), 404
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
