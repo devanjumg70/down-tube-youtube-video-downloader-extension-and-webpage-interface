@@ -90,27 +90,91 @@ def add_cors_headers(response):
 
 ### Video Processing and Audio Handling
 
-The server now handles complete video processing to ensure videos include audio:
+The server now offers two methods for video processing to ensure videos include audio:
+
+#### 1. yt-dlp Built-in Merging
 
 ```python
-# Set up options for yt-dlp for download
-ydl_opts = {
-    "format": f"{itag}+bestaudio/best",  # Selected format + best audio, or best combined
-    "merge_output_format": "mp4",        # Force mp4 for compatibility
-    "outtmpl": output_path,              # Output filename template
-}
-
-# Download and process the video on the server
-with YoutubeDL(ydl_opts) as ydl:
-    info = ydl.extract_info(url, download=True)
+def download_with_ytdlp(url, video_id, itag, file_id):
+    """Download and process using yt-dlp's built-in merging capability"""
+    output_path = os.path.join(TEMP_DIR, f"youtube_{video_id}_{file_id}.mp4")
     
-    # Return the processed file to the client
+    # Set up options for yt-dlp
+    ydl_opts = {
+        "format": f"{itag}+bestaudio/best",  # Specified format + best audio, or best combined
+        "merge_output_format": "mp4",        # Force mp4 for compatibility
+        "outtmpl": output_path,              # Output filename template
+        "quiet": True,                       # Don't print progress
+    }
+    
+    # Download and process the video on the server
+    with YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        
+        # Return the processed file to the client
+        return send_file(
+            output_path,
+            as_attachment=True,
+            download_name=f"{title}.mp4",
+            mimetype="video/mp4"
+        )
+```
+
+#### 2. FFmpeg Direct Merging
+
+```python
+def download_with_ffmpeg(url, video_id, itag, file_id):
+    """Download video and audio separately and merge with FFmpeg"""
+    # Create temporary paths for video, audio, and output
+    temp_video = os.path.join(TEMP_DIR, f"video_{video_id}_{file_id}.mp4")
+    temp_audio = os.path.join(TEMP_DIR, f"audio_{video_id}_{file_id}.m4a")
+    output_path = os.path.join(TEMP_DIR, f"merged_{video_id}_{file_id}.mp4")
+    
+    # Download video and audio separately
+    with YoutubeDL({"format": itag, "outtmpl": temp_video}) as ydl:
+        ydl.download([url])
+    
+    with YoutubeDL({"format": "bestaudio[ext=m4a]", "outtmpl": temp_audio}) as ydl:
+        ydl.download([url])
+    
+    # Merge with FFmpeg
+    ffmpeg_cmd = [
+        'ffmpeg', 
+        '-i', temp_video,  # Video stream
+        '-i', temp_audio,  # Audio stream
+        '-c:v', 'copy',    # Copy video stream (no re-encoding)
+        '-c:a', 'aac',     # Use AAC codec for audio
+        '-strict', 'experimental',
+        output_path
+    ]
+    subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
+    
+    # Return the merged file
     return send_file(
         output_path,
         as_attachment=True,
         download_name=f"{title}.mp4",
         mimetype="video/mp4"
     )
+```
+
+#### FFmpeg Availability Detection
+
+The server automatically detects if FFmpeg is installed on the system:
+
+```python
+# Check if ffmpeg is available
+def check_ffmpeg():
+    try:
+        subprocess.run(['ffmpeg', '-version'], check=True, capture_output=True)
+        logger.info("FFmpeg is available")
+        return True
+    except (subprocess.SubprocessError, FileNotFoundError):
+        logger.warning("FFmpeg is not available, falling back to yt-dlp merging")
+        return False
+
+# Global flag for FFmpeg availability
+FFMPEG_AVAILABLE = check_ffmpeg()
 ```
 
 ### Format Filtering
@@ -368,8 +432,78 @@ if f.get("height") in [360, 480, 720, 1080, 1440, 2160]:
 
 ### UI Customization
 
+#### Web Interface with FFmpeg Toggle
+
+The server includes a web interface (`/` route) that allows direct testing with built-in FFmpeg support:
+
+```html
+<div class="form-group">
+    <!-- FFmpeg status display -->
+    <p><strong>System Status:</strong> FFmpeg is <span class="status {status_class}">{ffmpeg_status}</span></p>
+    
+    <!-- URL input -->
+    <input type="text" id="videoInput" placeholder="YouTube URL">
+    <button id="testBtn">Fetch Video</button>
+    
+    <!-- FFmpeg toggle option -->
+    <label>
+        <input type="checkbox" id="useFFmpeg"> 
+        Use FFmpeg for merging (if available locally)
+    </label>
+</div>
+```
+
+#### Chrome Extension
+
 The popup interface can be customized by modifying:
 
-1. `popup.html` for structure changes
-2. `popup.css` for styling
-3. `popup.js` for dynamic elements generation
+1. `popup.html` for structure changes:
+   ```html
+   <!-- Add FFmpeg toggle to the popup -->
+   <div class="options">
+     <label>
+       <input type="checkbox" id="useFFmpeg"> 
+       Use FFmpeg merging (if available)
+     </label>
+   </div>
+   ```
+
+2. `popup.css` for styling:
+   ```css
+   /* Add styling for the FFmpeg status indicator */
+   .ffmpeg-status {
+     display: inline-block;
+     padding: 2px 6px;
+     border-radius: 3px;
+     font-size: 12px;
+     margin-left: 5px;
+   }
+   .available { background: #d4edda; color: #155724; }
+   .unavailable { background: #f8d7da; color: #721c24; }
+   ```
+
+3. `popup.js` for dynamic elements and FFmpeg support:
+   ```javascript
+   // Add FFmpeg availability check
+   async function checkFFmpegAvailability() {
+     try {
+       const response = await fetch(`${API_SERVER}/api/info?videoId=dQw4w9WgXcQ`);
+       const data = await response.json();
+       return data.ffmpeg_available || false;
+     } catch (error) {
+       return false;
+     }
+   }
+   
+   // Update download request to include FFmpeg preference
+   function downloadVideo(videoId, itag, title) {
+     const useFFmpeg = document.getElementById('useFFmpeg').checked;
+     chrome.runtime.sendMessage({
+       action: 'downloadVideo',
+       videoId: videoId,
+       itag: itag,
+       fileName: `${title}.mp4`,
+       useFFmpeg: useFFmpeg
+     }, handleDownloadResponse);
+   }
+   ```

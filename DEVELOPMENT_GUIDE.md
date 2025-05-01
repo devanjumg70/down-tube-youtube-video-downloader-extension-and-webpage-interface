@@ -169,10 +169,13 @@ print(f"Request headers: {dict(request.headers)}")
 **Challenge**: YouTube separates video and audio streams for many video formats, causing downloaded videos to lack audio.
 
 **Solution**:
-- Implemented server-side download processing to combine video and audio streams
-- Used yt-dlp's format selection capabilities with `format: "{itag}+bestaudio/best"`
+- Implemented two different methods to solve this issue:
+  1. **yt-dlp Merging**: Used yt-dlp's built-in format selection with `format: "{itag}+bestaudio/best"`
+  2. **FFmpeg Direct Merging**: Added advanced FFmpeg integration for higher quality merging
+- Automatically detects if FFmpeg is installed on the user's system
+- Provides user choice between the two methods via a checkbox in the UI
 - Created a temporary file approach to properly process the combined streams
-- Used Flask's send_file to serve the processed files to users
+- Used Flask's send_file to serve the processed files with proper cleanup
 
 ### 6. YouTube API Changes
 

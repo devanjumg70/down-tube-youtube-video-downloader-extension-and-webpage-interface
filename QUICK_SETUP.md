@@ -9,21 +9,30 @@ This guide provides step-by-step instructions for setting up and using the YouTu
 1. **Prerequisites**:
    - Python 3.11 or newer
    - pip (Python package manager)
+   - FFmpeg (optional but recommended for better video quality)
 
 2. **Install Required Packages**:
    ```bash
    pip install flask flask-cors yt-dlp trafilatura
    ```
 
-3. **Start the Server**:
+3. **Install FFmpeg** (optional but recommended):
+   - **Windows**: Download from [ffmpeg.org](https://ffmpeg.org/download.html) and add to your PATH
+   - **macOS**: Use Homebrew: `brew install ffmpeg`
+   - **Linux**: Use your package manager, e.g., `sudo apt install ffmpeg`
+
+4. **Start the Server**:
    ```bash
    python server.py
    ```
    The server will start on port 5000 by default. You should see:
    ```
+   FFmpeg is available
    YouTube Downloader API Server running on port 5000
    * Running on http://127.0.0.1:5000
    ```
+   
+   If FFmpeg is not found, you'll see "FFmpeg is not available, falling back to yt-dlp merging" which is still functional but may provide lower quality in some cases.
 
 ### Chrome Extension Setup
 
@@ -94,12 +103,19 @@ A: The server now processes videos to ensure audio and video are properly combin
 A: This usually means the Python backend server isn't running. Start the server with `python server.py` and ensure port 5000 isn't blocked by a firewall.
 
 **Q: How does the extension handle audio?**
-A: The server downloads both video and audio streams, combines them into a single MP4 file, and then delivers the complete file to your browser. This ensures you get both video and audio in a single download.
+A: The server now offers two methods for combining video and audio:
+   1. **yt-dlp Merging**: The default method uses yt-dlp to process the streams.
+   2. **FFmpeg Merging**: If you have FFmpeg installed and check the "Use FFmpeg" option, it will use FFmpeg for potentially better quality and faster processing.
+
+**Q: What's the difference between yt-dlp and FFmpeg merging?**
+A: yt-dlp merging works on any system without additional software, while FFmpeg merging often provides better quality and handles more formats but requires FFmpeg to be installed on your system.
 
 ## Tips
 
 - For best video quality, choose the highest resolution format available
-- The "Audio Only" option is ideal for music videos
-- If a download fails, try a different resolution
+- Use FFmpeg merging when available for better quality (check the box in the interface)
+- For audio-only downloads, look for the "Audio Only" format option (ideal for music)
+- If a download fails, try a different resolution or merging method
 - Some videos may have region restrictions that prevent downloading
 - Keep yt-dlp updated with `pip install -U yt-dlp` to handle YouTube site changes
+- If you're using the Chrome extension, make sure to enable it on YouTube pages for the best experience
