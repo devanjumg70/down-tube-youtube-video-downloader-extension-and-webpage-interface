@@ -2,6 +2,7 @@ modules = ["nodejs-20"]
 
 [nix]
 channel = "stable-24_05"
+packages = ["chromium"]
 
 [workflows]
 runButton = "Project"
@@ -15,10 +16,6 @@ author = "agent"
 task = "workflow.run"
 args = "Chrome Extension Preview"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "chrome_extension_test"
-
 [[workflows.workflow]]
 name = "Chrome Extension Preview"
 author = "agent"
@@ -26,15 +23,6 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "npx web-ext run --source-dir=./ --start-url=\"https://www.youtube.com\" --target=chromium"
-waitForPort = 5000
-
-[[workflows.workflow]]
-name = "chrome_extension_test"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "google-chrome --load-extension=$(pwd) --no-first-run --no-default-browser-check https://youtube.com"
 
 [deployment]
 run = ["sh", "-c", "npx web-ext run --source-dir=./ --start-url=\"https://www.youtube.com\" --target=chromium"]

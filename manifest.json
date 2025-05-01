@@ -6,14 +6,24 @@
   "permissions": [
     "activeTab",
     "downloads",
-    "scripting"
+    "scripting",
+    "storage"
   ],
   "host_permissions": [
-    "https://*.youtube.com/*"
+    "https://*.youtube.com/*",
+    "https://www.youtube.com/oembed*",
+    "https://i.ytimg.com/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
+  "content_scripts": [
+    {
+      "matches": ["https://*.youtube.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
