@@ -687,19 +687,143 @@ def download_with_ffmpeg(url, video_id, itag, file_id):
 
 @app.route("/")
 def hello():
-    # Load the template file and replace placeholders
+    # Load the simplified template file and replace placeholders
     ffmpeg_status = "available" if FFMPEG_AVAILABLE else "not available"
     aria2c_status = "available" if ARIA2C_AVAILABLE else "not available"
     
-    with open("template.html", "r") as f:
-        html = f.read()
-    
-    # Replace placeholders
-    html = html.replace("{ffmpeg_status}", ffmpeg_status)
-    html = html.replace("{aria2c_status}", aria2c_status)
-    html = html.replace("{ffmpeg_class}", "available" if FFMPEG_AVAILABLE else "unavailable")
-    html = html.replace("{aria2c_class}", "available" if ARIA2C_AVAILABLE else "unavailable")
-    html = html.replace("{ffmpeg_js_available}", "true" if FFMPEG_AVAILABLE else "false")
+    try:
+        with open("simplified-template.html", "r") as f:
+            html = f.read()
+        
+        # Replace placeholders
+        html = html.replace("{ffmpeg_js_available}", "true" if FFMPEG_AVAILABLE else "false")
+        logger.info("Using simplified template HTML")
+    except Exception as e:
+        logger.error(f"Error loading template: {e}")
+        # Fallback to string-based HTML if template file is not found
+        html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>YouTube Video Downloader</title>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+                h1 { color: #ff0000; }
+                input, button { padding: 10px; margin: 5px 0; }
+                input { width: 70%; }
+                button { background: #ff0000; color: white; border: none; cursor: pointer; }
+                .download-btn { display: inline-block; padding: 10px; background: #065fd4; color: white; 
+                               text-decoration: none; margin: 5px; border-radius: 4px; }
+                .download-btn.audio { background: #ff0000; }
+            </style>
+        </head>
+        <body>
+            <h1>YouTube Video Downloader</h1>
+            <p>Enter a YouTube URL below:</p>
+            <div>
+                <input type="text" id="videoInput" placeholder="https://www.youtube.com/watch?v=...">
+                <button id="fetchBtn">Fetch</button>
+            </div>
+            <div>
+                <label>
+                    <input type="checkbox" id="useFFmpeg" """ + ("checked" if FFMPEG_AVAILABLE else "disabled") + """>
+                    Use FFmpeg for better quality """ + ("" if FFMPEG_AVAILABLE else "(Not available)") + """
+                </label>
+            </div>
+            <div id="resultDiv"></div>
+            
+            <script>
+                document.getElementById('fetchBtn').addEventListener('click', async () => {
+                    const input = document.getElementById('videoInput').value.trim();
+                    const resultDiv = document.getElementById('resultDiv');
+                    
+                    if (!input) {
+                        resultDiv.innerHTML = '<p style="color:red">Please enter a YouTube URL</p>';
+                        return;
+                    }
+                    
+                    resultDiv.innerHTML = '<p>Loading...</p>';
+                    
+                    try {
+                        let videoId = input;
+                        if (input.includes('watch?v=')) {
+                            const match = input.match(/[?&]v=([^&#]*)/);
+                            if (match && match[1]) videoId = match[1];
+                        } else if (input.includes('youtu.be/')) {
+                            const match = input.match(/youtu\\.be\\/([^?&#]*)/);
+                            if (match && match[1]) videoId = match[1];
+                        }
+                        
+                        const response = await fetch(`/api/info?videoId=${encodeURIComponent(videoId)}`);
+                        const data = await response.json();
+                        
+                        if (data.error) {
+                            resultDiv.innerHTML = `<p style="color:red">Error: ${data.error}</p>`;
+                            return;
+                        }
+                        
+                        const useFFmpeg = document.getElementById('useFFmpeg').checked;
+                        
+                        let buttonsHtml = '';
+                        if (data.formats && data.formats.length > 0) {
+                            data.formats.forEach(format => {
+                                const isAudioOnly = format.qualityLabel.includes('Audio Only');
+                                const buttonClass = isAudioOnly ? 'download-btn audio' : 'download-btn';
+                                
+                                let formatLabel = format.qualityLabel;
+                                if (formatLabel.includes('(MP3)')) formatLabel = 'Audio Only (MP3)';
+                                else if (formatLabel.includes('(AAC)')) formatLabel = 'Audio Only (AAC)';
+                                
+                                buttonsHtml += `
+                                    <a class="${buttonClass}" 
+                                       href="/api/download?videoId=${encodeURIComponent(videoId)}&itag=${format.itag}&use_ffmpeg=${useFFmpeg}"
+                                       target="_blank">${formatLabel}</a>
+                                `;
+                            });
+                        }
+                        
+                        resultDiv.innerHTML = `
+                            <div style="margin-top:20px">
+                                <div style="display:flex;margin-bottom:20px;background:white;border-radius:5px;overflow:hidden;box-shadow:0 0 10px rgba(0,0,0,0.1)">
+                                    <img src="${data.thumbnail}" alt="${data.title}" style="width:240px;height:auto;object-fit:cover">
+                                    <div style="padding:15px">
+                                        <h2 style="margin-top:0">${data.title || 'Unknown Title'}</h2>
+                                        <p>Channel: ${data.channel || 'Unknown Channel'}</p>
+                                    </div>
+                                </div>
+                                <div>
+                                    <h3>Available Download Options</h3>
+                                    <div>
+                                        ${buttonsHtml || '<p>No formats available</p>'}
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    } catch (error) {
+                        resultDiv.innerHTML = `<p style="color:red">Error: ${error.message}</p>`;
+                    }
+                });
+                
+                document.getElementById('videoInput').addEventListener('paste', (e) => {
+                    setTimeout(() => {
+                        const input = document.getElementById('videoInput').value.trim();
+                        if (input && (input.includes('youtube.com') || input.includes('youtu.be'))) {
+                            document.getElementById('fetchBtn').click();
+                        }
+                    }, 100);
+                });
+                
+                document.getElementById('videoInput').addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        document.getElementById('fetchBtn').click();
+                    }
+                });
+            </script>
+        </body>
+        </html>
+        """
     
     return html
 
