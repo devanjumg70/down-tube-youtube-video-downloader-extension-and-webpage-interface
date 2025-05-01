@@ -85,25 +85,52 @@ def add_cors_headers(response):
 - **Parameters**:
   - `videoId` (required): YouTube video ID
   - `itag` (required): Format identifier from the info endpoint
-- **Description**: Redirects to the actual video download URL
-- **Response**: HTTP 302 redirect to the video URL
+- **Description**: Downloads and processes the video with audio on the server, then serves the combined file
+- **Response**: Video file with both audio and video streams combined in MP4 format
+
+### Video Processing and Audio Handling
+
+The server now handles complete video processing to ensure videos include audio:
+
+```python
+# Set up options for yt-dlp for download
+ydl_opts = {
+    "format": f"{itag}+bestaudio/best",  # Selected format + best audio, or best combined
+    "merge_output_format": "mp4",        # Force mp4 for compatibility
+    "outtmpl": output_path,              # Output filename template
+}
+
+# Download and process the video on the server
+with YoutubeDL(ydl_opts) as ydl:
+    info = ydl.extract_info(url, download=True)
+    
+    # Return the processed file to the client
+    return send_file(
+        output_path,
+        as_attachment=True,
+        download_name=f"{title}.mp4",
+        mimetype="video/mp4"
+    )
+```
 
 ### Format Filtering
 
-The server filters video formats to include only common resolutions and audio formats:
+The server filters video formats while clearly identifying formats that contain both video and audio:
 
 ```python
-# Common video resolutions to include
-if f["ext"] == "mp4" and f.get("height") in [360, 480, 720, 1080]:
-    quality = f"{f['height']}p"
-    if quality not in seen_qualities:
-        formats.append({
-            "itag": f["format_id"],
-            "qualityLabel": quality,
-            "container": "mp4",
-            "url": f["url"]
-        })
-        seen_qualities.add(quality)
+# Look for formats that have both video and audio
+if f.get("vcodec") != "none" and f.get("acodec") != "none":
+    if f.get("height") in [360, 480, 720, 1080]:
+        quality = f"{f['height']}p"
+        if quality not in seen_qualities:
+            formats.append({
+                "itag": f["format_id"],
+                "qualityLabel": f"{quality} (with audio)",
+                "container": f["ext"],
+                "has_audio": True,
+                "has_video": True
+            })
+            seen_qualities.add(quality)
 ```
 
 ## Frontend Reference
@@ -313,7 +340,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 7. Popup displays video info and format buttons
 8. User clicks desired format button
 9. Download request sent to background script
-10. Background script initiates download via Chrome API
+10. Server downloads and processes video with audio
+11. Server combines video and audio streams
+12. Server sends complete file to browser
+13. Browser handles file download to user's device
 
 ## Advanced Customization
 

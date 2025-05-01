@@ -164,7 +164,17 @@ print(f"Request headers: {dict(request.headers)}")
 - Enhanced the test page with user-friendly elements and direct download capabilities
 - Added detailed error handling and visual feedback
 
-### 5. YouTube API Changes
+### 5. Video/Audio Synchronization
+
+**Challenge**: YouTube separates video and audio streams for many video formats, causing downloaded videos to lack audio.
+
+**Solution**:
+- Implemented server-side download processing to combine video and audio streams
+- Used yt-dlp's format selection capabilities with `format: "{itag}+bestaudio/best"`
+- Created a temporary file approach to properly process the combined streams
+- Used Flask's send_file to serve the processed files to users
+
+### 6. YouTube API Changes
 
 **Challenge**: YouTube's API might change, breaking existing extraction methods.
 

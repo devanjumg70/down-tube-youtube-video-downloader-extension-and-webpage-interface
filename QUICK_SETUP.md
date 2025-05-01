@@ -87,8 +87,14 @@ A: Currently, the extension only supports YouTube videos. Support for other plat
 **Q: Is there a limit to the video quality I can download?**
 A: The extension provides all available formats that YouTube offers for each video, typically up to 1080p. Higher resolutions may be available for some videos.
 
+**Q: Why do downloads take longer now?**
+A: The server now processes videos to ensure audio and video are properly combined. This takes a bit more time but guarantees complete downloads with both audio and video.
+
 **Q: Why do I see "Server connection failed" errors?**
 A: This usually means the Python backend server isn't running. Start the server with `python server.py` and ensure port 5000 isn't blocked by a firewall.
+
+**Q: How does the extension handle audio?**
+A: The server downloads both video and audio streams, combines them into a single MP4 file, and then delivers the complete file to your browser. This ensures you get both video and audio in a single download.
 
 ## Tips
 
