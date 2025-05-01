@@ -646,6 +646,32 @@ def hello():
                 padding: 40px 20px;
                 max-width: 800px;
                 color: var(--text-dark);
+                transition: background-color var(--transition-speed), color var(--transition-speed);
+                position: relative;
+            }}
+            
+            /* Theme toggle */
+            .theme-switch {{
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background-color: var(--bg-card);
+                color: var(--text-dark);
+                width: 40px;
+                height: 40px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                box-shadow: var(--shadow);
+                z-index: 1000;
+                transition: all var(--transition-speed);
+            }}
+            
+            .theme-switch:hover {{
+                transform: rotate(30deg);
+                box-shadow: 0 0 15px rgba(0,0,0,0.2);
             }}
             
             .container {{
@@ -656,10 +682,31 @@ def hello():
             }}
             
             .header {{
-                background: linear-gradient(to right, var(--primary-color), #ff7676);
+                background: linear-gradient(135deg, var(--primary-color), #ff7676);
                 color: white;
                 padding: 30px 20px;
                 text-align: center;
+                position: relative;
+                overflow: hidden;
+            }}
+            
+            /* Animated background effect */
+            .header::before {{
+                content: '';
+                position: absolute;
+                top: -50%;
+                left: -50%;
+                width: 200%;
+                height: 200%;
+                background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 70%);
+                animation: pulse 8s infinite ease-in-out;
+                z-index: 1;
+            }}
+            
+            @keyframes pulse {{
+                0% {{ transform: scale(1); opacity: 0.5; }}
+                50% {{ transform: scale(1.2); opacity: 0.2; }}
+                100% {{ transform: scale(1); opacity: 0.5; }}
             }}
             
             .header h1 {{
@@ -982,12 +1029,41 @@ def hello():
                 text-decoration: none;
                 border-radius: var(--border-radius);
                 font-weight: 500;
-                transition: all 0.2s;
+                transition: all var(--transition-speed);
+                border: 1px solid transparent;
+                position: relative;
+                overflow: hidden;
+            }}
+            
+            /* Button ripple effect */
+            .download-btn::after {{
+                content: '';
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                width: 5px;
+                height: 5px;
+                background: rgba(255, 255, 255, 0.5);
+                opacity: 0;
+                border-radius: 100%;
+                transform: scale(1, 1) translate(-50%);
+                transform-origin: 50% 50%;
+            }}
+            
+            .download-btn:focus:not(:active)::after {{
+                animation: ripple 1s ease-out;
+            }}
+            
+            @keyframes ripple {{
+                0% {{ transform: scale(0, 0); opacity: 0.5; }}
+                20% {{ transform: scale(25, 25); opacity: 0.3; }}
+                100% {{ opacity: 0; transform: scale(40, 40); }}
             }}
             
             .download-btn:hover {{
                 background-color: var(--secondary-hover);
                 transform: translateY(-2px);
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
             }}
             
             .download-btn i {{
@@ -1043,6 +1119,9 @@ def hello():
         </style>
     </head>
     <body>
+        <div class="theme-switch" id="theme-toggle">
+            <i class="fas fa-moon"></i>
+        </div>
         <div class="container">
             <div class="header">
                 <h1><i class="fas fa-download"></i> YouTube Video Downloader</h1>
@@ -1117,6 +1196,33 @@ def hello():
         </footer>
         
         <script>
+        // Theme toggle functionality
+        const themeToggle = document.getElementById('theme-toggle');
+        const body = document.body;
+        
+        // Check if dark mode is enabled in localStorage
+        const isDarkMode = localStorage.getItem('darkMode') === 'true';
+        
+        // Apply dark mode if it was previously enabled
+        if (isDarkMode) {{
+            body.classList.add('dark-mode');
+            themeToggle.innerHTML = '<i class="fas fa-sun"></i>';
+        }}
+        
+        // Toggle dark mode when the button is clicked
+        themeToggle.addEventListener('click', function() {{
+            body.classList.toggle('dark-mode');
+            
+            // Update localStorage with the current theme preference
+            const isDark = body.classList.contains('dark-mode');
+            localStorage.setItem('darkMode', isDark);
+            
+            // Change the icon based on the current theme
+            themeToggle.innerHTML = isDark ? 
+              '<i class="fas fa-sun"></i>' : 
+              '<i class="fas fa-moon"></i>';
+        }});
+            
         document.getElementById('fetchBtn').addEventListener('click', async () => {{
             const input = document.getElementById('videoInput').value.trim();
             const resultDiv = document.getElementById('result');
