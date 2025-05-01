@@ -1225,7 +1225,8 @@ def hello():
         }});
         
         // Disable FFmpeg toggle if not available
-        if (!{FFMPEG_AVAILABLE}) {{
+        const ffmpegAvailable = {str(FFMPEG_AVAILABLE).lower()};
+        if (!ffmpegAvailable) {{
             document.getElementById('useFFmpeg').disabled = true;
             document.querySelector('.toggle-label').innerHTML += ' <span style="color: var(--error-color); font-size: 12px;">(Not available)</span>';
         }}

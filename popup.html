@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Video Downloader</title>
-  <link rel="stylesheet" href="popup.css">
+  <link rel="stylesheet" href="popup_new.css">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -14,60 +14,68 @@
         <i class="fas fa-download"></i>
         <h1>Video Downloader</h1>
       </div>
-      <p>Get high-quality videos with audio</p>
+      <p>Download videos in your preferred format</p>
     </header>
     
-    <div class="input-container">
-      <div class="url-input-wrapper">
-        <i class="fas fa-link input-icon"></i>
-        <input type="text" id="video-url" placeholder="YouTube URL auto-detected">
+    <div class="content-section">
+      <div class="input-container">
+        <div class="url-input-wrapper">
+          <i class="fas fa-link input-icon"></i>
+          <input type="text" id="video-url" placeholder="YouTube URL auto-detected">
+        </div>
+        <button id="fetch-btn">
+          <i class="fas fa-search"></i>
+        </button>
       </div>
-      <button id="fetch-btn">
-        <i class="fas fa-search"></i>
-      </button>
-    </div>
 
-    <div class="options-container">
-      <label class="toggle-switch">
-        <input type="checkbox" id="use-ffmpeg" checked>
-        <span class="toggle-slider"></span>
-        <span class="toggle-label">Use FFmpeg (better quality)</span>
-      </label>
-    </div>
-    
-    <div id="loader" class="hidden">
-      <div class="spinner-container">
-        <div class="spinner"></div>
+      <div class="options-container">
+        <label class="toggle-switch">
+          <input type="checkbox" id="use-ffmpeg" checked>
+          <span class="toggle-slider"></span>
+          <span class="toggle-label"><i class="fas fa-check-circle"></i> Use FFmpeg (better quality)</span>
+        </label>
       </div>
-      <p>Analyzing video...</p>
-    </div>
-    
-    <div id="error-container" class="hidden">
-      <i class="fas fa-exclamation-circle error-icon"></i>
-      <p id="error-message"></p>
-    </div>
-    
-    <div id="video-info" class="hidden">
-      <div class="video-details">
-        <img id="video-thumbnail" src="" alt="Video thumbnail">
-        <div class="title-container">
-          <h2 id="video-title"></h2>
-          <p id="video-channel"></p>
+      
+      <div id="loader" class="hidden">
+        <div class="spinner-container">
+          <div class="spinner"></div>
+        </div>
+        <p>Analyzing video content...</p>
+      </div>
+      
+      <div id="error-container" class="hidden">
+        <i class="fas fa-exclamation-circle error-icon"></i>
+        <p id="error-message"></p>
+      </div>
+      
+      <div class="info-message" id="info-message">
+        <i class="fas fa-info-circle"></i>
+        <span>Enter a YouTube URL or click search to analyze the current video</span>
+      </div>
+      
+      <div id="video-info" class="hidden">
+        <div class="video-details">
+          <img id="video-thumbnail" src="" alt="Video thumbnail">
+          <div class="title-container">
+            <h2 id="video-title"></h2>
+            <p><i class="fas fa-user"></i> <span id="video-channel"></span></p>
+            <p><i class="fas fa-info-circle"></i> Select your preferred format below</p>
+          </div>
+        </div>
+        
+        <div class="download-options">
+          <h3><i class="fas fa-download"></i> Available Formats</h3>
+          <div id="resolution-buttons">
+            <!-- Resolution buttons will be added here dynamically -->
+          </div>
         </div>
       </div>
       
-      <div class="download-options">
-        <h3><i class="fas fa-film"></i> Available Formats:</h3>
-        <div id="resolution-buttons">
-          <!-- Resolution buttons will be added here dynamically -->
-        </div>
-      </div>
+      <footer>
+        <p><i class="fas fa-sync-alt"></i> Auto-detects current YouTube videos</p>
+        <p class="version">v1.1</p>
+      </footer>
     </div>
-    
-    <footer>
-      <p><i class="fas fa-info-circle"></i> Auto-fetches from current YouTube tab</p>
-      <p class="version">v1.0</p>
-    </footer>
   </div>
   
   <script src="popup.js"></script>
