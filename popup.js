@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const loader = document.getElementById('loader');
   const errorContainer = document.getElementById('error-container');
   const errorMessage = document.getElementById('error-message');
+  const infoMessage = document.getElementById('info-message');
   const videoInfo = document.getElementById('video-info');
   const videoTitle = document.getElementById('video-title');
   const videoChannel = document.getElementById('video-channel');
@@ -39,6 +40,7 @@ document.addEventListener('DOMContentLoaded', function() {
     resolutionButtons.innerHTML = '';
     toggleElement(videoInfo, false);
     toggleElement(errorContainer, false);
+    toggleElement(infoMessage, true);
   }
   
   // Function to show error message
@@ -46,6 +48,7 @@ document.addEventListener('DOMContentLoaded', function() {
     errorMessage.textContent = message;
     toggleElement(errorContainer, true);
     toggleElement(loader, false);
+    toggleElement(infoMessage, false);
     currentlyFetchingUrl = ''; // Reset fetching state
   }
   
@@ -81,6 +84,7 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('fetchVideoInfo called with URL:', url);
     clearPreviousData();
     toggleElement(loader, true);
+    toggleElement(infoMessage, false);
     currentlyFetchingUrl = url;
     
     if (!isValidYouTubeUrl(url)) {

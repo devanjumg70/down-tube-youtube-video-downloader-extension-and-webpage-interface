@@ -578,7 +578,7 @@ def hello():
     # Modern static HTML with improved UI
     ffmpeg_status = "available" if FFMPEG_AVAILABLE else "not available"
     aria2c_status = "available" if ARIA2C_AVAILABLE else "not available"
-    html = f"""
+    html = """
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -1225,11 +1225,11 @@ def hello():
         }});
         
         // Disable FFmpeg toggle if not available
-        const ffmpegAvailable = {str(FFMPEG_AVAILABLE).lower()};
-        if (!ffmpegAvailable) {{
+        const ffmpegAvailable = """ + ("true" if FFMPEG_AVAILABLE else "false") + """;
+        if (!ffmpegAvailable) {
             document.getElementById('useFFmpeg').disabled = true;
             document.querySelector('.toggle-label').innerHTML += ' <span style="color: var(--error-color); font-size: 12px;">(Not available)</span>';
-        }}
+        }
         </script>
     </body>
     </html>
