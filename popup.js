@@ -1,4 +1,6 @@
 document.addEventListener('DOMContentLoaded', function() {
+  console.log('Popup script loaded');
+  
   // Elements
   const videoUrlInput = document.getElementById('video-url');
   const fetchBtn = document.getElementById('fetch-btn');
@@ -10,6 +12,19 @@ document.addEventListener('DOMContentLoaded', function() {
   const videoChannel = document.getElementById('video-channel');
   const videoThumbnail = document.getElementById('video-thumbnail');
   const resolutionButtons = document.getElementById('resolution-buttons');
+  
+  console.log('All DOM elements found:', {
+    videoUrlInput: !!videoUrlInput,
+    fetchBtn: !!fetchBtn,
+    loader: !!loader,
+    errorContainer: !!errorContainer,
+    errorMessage: !!errorMessage,
+    videoInfo: !!videoInfo,
+    videoTitle: !!videoTitle,
+    videoChannel: !!videoChannel,
+    videoThumbnail: !!videoThumbnail,
+    resolutionButtons: !!resolutionButtons
+  });
   
   // Helper function to show/hide elements
   function toggleElement(element, show) {
@@ -48,30 +63,43 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Function to fetch video information
   async function fetchVideoInfo(url) {
+    console.log('fetchVideoInfo called with URL:', url);
     clearPreviousData();
     toggleElement(loader, true);
     
     if (!isValidYouTubeUrl(url)) {
+      console.log('Invalid YouTube URL:', url);
       showError('Please enter a valid YouTube URL');
       return;
     }
     
     const videoId = extractVideoId(url);
+    console.log('Extracted video ID:', videoId);
     
     if (!videoId) {
+      console.log('Failed to extract video ID from URL:', url);
       showError('Could not extract video ID from the URL');
       return;
     }
     
     try {
+      console.log('Sending message to background script for video ID:', videoId);
       // Send message to background script to fetch video info
       chrome.runtime.sendMessage(
         { action: 'fetchVideoInfo', videoId: videoId },
         function(response) {
+          console.log('Received response from background script:', response);
           toggleElement(loader, false);
           
-          if (response.error) {
+          if (response && response.error) {
+            console.error('Error in response:', response.error);
             showError(response.error);
+            return;
+          }
+          
+          if (!response) {
+            console.error('No response received from background script');
+            showError('Failed to get response from the server. Please try again later.');
             return;
           }
           

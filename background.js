@@ -3,6 +3,24 @@
 // API URL for our backend server
 const API_SERVER = 'http://localhost:5000';
 
+// Log to help with debugging
+console.log('Background script loaded. API_SERVER:', API_SERVER);
+
+// Adding simple ping function to test server connectivity
+async function pingServer() {
+  try {
+    const response = await fetch(`${API_SERVER}/`);
+    console.log('Server ping response:', response.status, response.statusText);
+    return response.ok;
+  } catch (error) {
+    console.error('Server ping failed:', error);
+    return false;
+  }
+}
+
+// Try to ping the server when the background script loads
+pingServer();
+
 // Listen for messages from the popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'fetchVideoInfo') {
@@ -22,16 +40,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
  */
 async function fetchVideoInfo(videoId, sendResponse) {
   try {
+    // Log to help with debugging
+    console.log(`Fetching video info for ID: ${videoId} from ${API_SERVER}/api/info`);
+    
     // Call our API server to get video information
-    const response = await fetch(`${API_SERVER}/api/info?videoId=${videoId}`);
+    const apiUrl = `${API_SERVER}/api/info?videoId=${videoId}`;
+    console.log('Making request to:', apiUrl);
+    
+    const response = await fetch(apiUrl);
+    console.log('Response received:', response.status, response.statusText);
     
     if (!response.ok) {
+      console.error('Error response:', response.status, response.statusText);
       const errorData = await response.json();
       sendResponse({ error: errorData.error || 'Failed to fetch video information' });
       return;
     }
     
+    console.log('Response OK, parsing JSON');
     const data = await response.json();
+    console.log('Parsed data:', data);
     
     // Send the response back to the popup
     sendResponse({

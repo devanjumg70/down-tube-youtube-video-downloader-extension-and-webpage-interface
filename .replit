@@ -2,7 +2,7 @@ modules = ["nodejs-20", "python-3.11"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["chromium"]
+packages = ["chromium", "ffmpeg"]
 
 [workflows]
 runButton = "Project"
@@ -43,3 +43,7 @@ run = ["sh", "-c", "npx web-ext run --source-dir=./ --start-url=\"https://www.yo
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
