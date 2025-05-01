@@ -42,6 +42,14 @@ def check_aria2c():
 FFMPEG_AVAILABLE = check_ffmpeg()
 ARIA2C_AVAILABLE = check_aria2c()
 
+# YouTube cookie file path
+YOUTUBE_COOKIE_FILE = os.path.join(TEMP_DIR, 'youtube_cookies.txt')
+YOUTUBE_COOKIES_AVAILABLE = False
+
+# Check if YouTube cookies are available
+def check_youtube_cookies():
+    return os.path.exists(YOUTUBE_COOKIE_FILE) and os.path.getsize(YOUTUBE_COOKIE_FILE) > 0
+
 # Add CORS headers to all responses
 @app.after_request
 def add_cors_headers(response):
@@ -1028,7 +1036,7 @@ def hello():
                             <div class="status-content">
                                 <div class="status-name">
                                     FFmpeg
-                                    <span class="status-badge {("available" if FFMPEG_AVAILABLE else "unavailable")}">
+                                    <span class="status-badge {'available' if FFMPEG_AVAILABLE else 'unavailable'}">
                                         {ffmpeg_status}
                                     </span>
                                 </div>
@@ -1040,7 +1048,7 @@ def hello():
                             <div class="status-content">
                                 <div class="status-name">
                                     aria2c
-                                    <span class="status-badge {("available" if ARIA2C_AVAILABLE else "unavailable")}">
+                                    <span class="status-badge {'available' if ARIA2C_AVAILABLE else 'unavailable'}">
                                         {aria2c_status}
                                     </span>
                                 </div>
@@ -1061,7 +1069,7 @@ def hello():
                     
                     <div class="toggle-container">
                         <label class="toggle-switch">
-                            <input type="checkbox" id="useFFmpeg" {("checked" if FFMPEG_AVAILABLE else "")}>
+                            <input type="checkbox" id="useFFmpeg" {'checked' if FFMPEG_AVAILABLE else ''}>
                             <span class="toggle-slider"></span>
                         </label>
                         <span class="toggle-label">
@@ -1225,7 +1233,8 @@ def hello():
         }});
         
         // Disable FFmpeg toggle if not available
-        if (!{FFMPEG_AVAILABLE}) {{
+        const ffmpegAvailable = {'true' if FFMPEG_AVAILABLE else 'false'};
+        if (!ffmpegAvailable) {{
             document.getElementById('useFFmpeg').disabled = true;
             document.querySelector('.toggle-label').innerHTML += ' <span style="color: var(--error-color); font-size: 12px;">(Not available)</span>';
         }}
