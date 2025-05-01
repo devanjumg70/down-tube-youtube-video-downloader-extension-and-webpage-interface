@@ -575,68 +575,548 @@ def download_with_ffmpeg(url, video_id, itag, file_id):
 
 @app.route("/")
 def hello():
-    # Simple static HTML
+    # Modern static HTML with improved UI
     ffmpeg_status = "available" if FFMPEG_AVAILABLE else "not available"
     aria2c_status = "available" if ARIA2C_AVAILABLE else "not available"
     html = f"""
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
     <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>YouTube Video Downloader</title>
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
         <style>
-            body {{ font-family: Arial, sans-serif; margin: 0 auto; padding: 20px; max-width: 800px; }}
-            h1 {{ color: #c00; text-align: center; }}
-            .form-group {{ padding: 15px; background: #f8f8f8; border-radius: 5px; margin-bottom: 20px; }}
-            input[type="text"] {{ width: 70%; padding: 8px; }}
-            button {{ padding: 8px 15px; background: #c00; color: white; border: none; cursor: pointer; }}
-            .video-info {{ text-align: center; }}
-            .video-thumbnail {{ max-width: 320px; }}
-            .download-btn {{ display: inline-block; margin: 5px; padding: 8px 15px; background: #2a76dd; color: white; 
-                           text-decoration: none; border-radius: 4px; }}
-            .status {{ padding: 3px 8px; border-radius: 3px; font-weight: bold; }}
-            .available {{ background: #d4edda; color: #155724; }}
-            .unavailable {{ background: #f8d7da; color: #721c24; }}
-            .system-status {{ margin-bottom: 10px; }}
-            .optimization-note {{ font-size: 0.9em; color: #6c757d; margin-top: 5px; }}
+            :root {{
+                --primary-color: #ff4b4b;
+                --primary-hover: #e63e3e;
+                --secondary-color: #4285f4;
+                --secondary-hover: #3367d6;
+                --text-dark: #2d3748;
+                --text-light: #718096;
+                --bg-light: #f8fafc;
+                --bg-white: #ffffff;
+                --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                --border-radius: 8px;
+                --border-color: #e2e8f0;
+                --success-color: #48bb78;
+                --error-color: #f56565;
+            }}
+            
+            * {{
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+                font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Oxygen, Ubuntu, sans-serif;
+            }}
+            
+            body {{
+                background-color: var(--bg-light);
+                margin: 0 auto;
+                padding: 40px 20px;
+                max-width: 800px;
+                color: var(--text-dark);
+            }}
+            
+            .container {{
+                background: var(--bg-white);
+                border-radius: var(--border-radius);
+                box-shadow: var(--shadow);
+                overflow: hidden;
+            }}
+            
+            .header {{
+                background: linear-gradient(to right, var(--primary-color), #ff7676);
+                color: white;
+                padding: 30px 20px;
+                text-align: center;
+            }}
+            
+            .header h1 {{
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 28px;
+                margin-bottom: 10px;
+            }}
+            
+            .header h1 i {{
+                margin-right: 12px;
+                font-size: 32px;
+            }}
+            
+            .header p {{
+                font-size: 16px;
+                opacity: 0.9;
+            }}
+            
+            .system-status {{
+                background-color: var(--bg-light);
+                border-radius: var(--border-radius);
+                padding: 15px;
+                margin-bottom: 20px;
+            }}
+            
+            .status-title {{
+                font-weight: 600;
+                margin-bottom: 10px;
+                display: flex;
+                align-items: center;
+            }}
+            
+            .status-title i {{
+                margin-right: 8px;
+                color: var(--secondary-color);
+            }}
+            
+            .status-grid {{
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 15px;
+            }}
+            
+            .status-item {{
+                display: flex;
+                align-items: center;
+                background: white;
+                padding: 12px;
+                border-radius: var(--border-radius);
+                border-left: 4px solid var(--secondary-color);
+            }}
+            
+            .status-item i {{
+                font-size: 20px;
+                margin-right: 10px;
+            }}
+            
+            .status-item .status-content {{
+                flex: 1;
+            }}
+            
+            .status-item .status-name {{
+                font-weight: 600;
+                margin-bottom: 3px;
+            }}
+            
+            .status-item .status-note {{
+                font-size: 12px;
+                color: var(--text-light);
+            }}
+            
+            .status-badge {{
+                padding: 3px 8px;
+                border-radius: 12px;
+                font-size: 12px;
+                font-weight: 600;
+                text-transform: uppercase;
+            }}
+            
+            .available {{
+                background: #d4edda;
+                color: #155724;
+            }}
+            
+            .unavailable {{
+                background: #f8d7da;
+                color: #721c24;
+            }}
+            
+            .form-section {{
+                padding: 25px;
+            }}
+            
+            .form-group {{
+                margin-bottom: 25px;
+            }}
+            
+            .form-label {{
+                display: block;
+                font-weight: 600;
+                margin-bottom: 8px;
+                color: var(--text-dark);
+            }}
+            
+            .input-wrapper {{
+                display: flex;
+                width: 100%;
+                position: relative;
+            }}
+            
+            .input-icon {{
+                position: absolute;
+                left: 12px;
+                top: 50%;
+                transform: translateY(-50%);
+                color: var(--text-light);
+            }}
+            
+            #videoInput {{
+                flex: 1;
+                padding: 12px 12px 12px 40px;
+                border: 1px solid var(--border-color);
+                border-radius: var(--border-radius) 0 0 var(--border-radius);
+                font-size: 16px;
+                transition: all 0.2s;
+            }}
+            
+            #videoInput:focus {{
+                outline: none;
+                border-color: var(--primary-color);
+                box-shadow: 0 0 0 2px rgba(255, 75, 75, 0.25);
+            }}
+            
+            #fetchBtn {{
+                background-color: var(--primary-color);
+                color: white;
+                border: none;
+                padding: 0 25px;
+                border-radius: 0 var(--border-radius) var(--border-radius) 0;
+                font-weight: 600;
+                cursor: pointer;
+                font-size: 16px;
+                transition: background-color 0.2s;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }}
+            
+            #fetchBtn i {{
+                margin-right: 8px;
+            }}
+            
+            #fetchBtn:hover {{
+                background-color: var(--primary-hover);
+            }}
+            
+            .toggle-container {{
+                margin-top: 15px;
+                display: flex;
+                align-items: center;
+            }}
+            
+            .toggle-switch {{
+                position: relative;
+                display: inline-block;
+                width: 60px;
+                height: 30px;
+                margin-right: 12px;
+            }}
+            
+            .toggle-switch input {{
+                opacity: 0;
+                width: 0;
+                height: 0;
+            }}
+            
+            .toggle-slider {{
+                position: absolute;
+                cursor: pointer;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background-color: #ccc;
+                transition: .4s;
+                border-radius: 34px;
+            }}
+            
+            .toggle-slider:before {{
+                position: absolute;
+                content: "";
+                height: 22px;
+                width: 22px;
+                left: 4px;
+                bottom: 4px;
+                background-color: white;
+                transition: .4s;
+                border-radius: 50%;
+            }}
+            
+            input:checked + .toggle-slider {{
+                background-color: var(--success-color);
+            }}
+            
+            input:checked + .toggle-slider:before {{
+                transform: translateX(30px);
+            }}
+            
+            .toggle-label {{
+                font-weight: 500;
+                font-size: 14px;
+                display: flex;
+                align-items: center;
+            }}
+            
+            .toggle-label i {{
+                margin-right: 8px;
+                color: var(--success-color);
+            }}
+            
+            .loader {{
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                flex-direction: column;
+                padding: 40px 20px;
+            }}
+            
+            .spinner {{
+                width: 40px;
+                height: 40px;
+                border: 4px solid rgba(255, 75, 75, 0.25);
+                border-top: 4px solid var(--primary-color);
+                border-radius: 50%;
+                animation: spin 1s linear infinite;
+                margin-bottom: 20px;
+            }}
+            
+            @keyframes spin {{
+                0% {{ transform: rotate(0deg); }}
+                100% {{ transform: rotate(360deg); }}
+            }}
+            
+            .video-info {{
+                padding: 20px;
+                max-width: 700px;
+                margin: 0 auto;
+            }}
+            
+            .video-details {{
+                display: flex;
+                align-items: flex-start;
+                margin-bottom: 30px;
+                background: white;
+                border-radius: var(--border-radius);
+                overflow: hidden;
+                box-shadow: var(--shadow);
+            }}
+            
+            .video-thumbnail {{
+                width: 240px;
+                height: auto;
+                object-fit: cover;
+                border-right: 1px solid var(--border-color);
+            }}
+            
+            .video-text {{
+                padding: 20px;
+                flex: 1;
+            }}
+            
+            .video-text h2 {{
+                font-size: 18px;
+                margin-bottom: 8px;
+                line-height: 1.4;
+            }}
+            
+            .video-text p {{
+                color: var(--text-light);
+                margin-bottom: 15px;
+                font-size: 14px;
+            }}
+            
+            .download-section {{
+                background: white;
+                border-radius: var(--border-radius);
+                padding: 20px;
+                box-shadow: var(--shadow);
+            }}
+            
+            .download-section h3 {{
+                font-size: 18px;
+                margin-bottom: 15px;
+                padding-bottom: 10px;
+                border-bottom: 1px solid var(--border-color);
+                display: flex;
+                align-items: center;
+            }}
+            
+            .download-section h3 i {{
+                margin-right: 10px;
+                color: var(--secondary-color);
+            }}
+            
+            .download-grid {{
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                gap: 12px;
+            }}
+            
+            .download-btn {{
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 12px;
+                background-color: var(--secondary-color);
+                color: white;
+                text-decoration: none;
+                border-radius: var(--border-radius);
+                font-weight: 500;
+                transition: all 0.2s;
+            }}
+            
+            .download-btn:hover {{
+                background-color: var(--secondary-hover);
+                transform: translateY(-2px);
+            }}
+            
+            .download-btn i {{
+                margin-right: 8px;
+            }}
+            
+            .download-btn.audio {{
+                background-color: var(--primary-color);
+            }}
+            
+            .download-btn.audio:hover {{
+                background-color: var(--primary-hover);
+            }}
+            
+            .error-msg {{
+                background-color: rgba(245, 101, 101, 0.1);
+                color: var(--error-color);
+                padding: 15px;
+                border-radius: var(--border-radius);
+                margin: 20px 0;
+                display: flex;
+                align-items: center;
+            }}
+            
+            .error-msg i {{
+                margin-right: 10px;
+                font-size: 18px;
+            }}
+            
+            footer {{
+                text-align: center;
+                margin-top: 30px;
+                padding-top: 20px;
+                color: var(--text-light);
+                font-size: 14px;
+            }}
+            
+            @media (max-width: 768px) {{
+                .video-details {{
+                    flex-direction: column;
+                }}
+                
+                .video-thumbnail {{
+                    width: 100%;
+                    border-right: none;
+                    border-bottom: 1px solid var(--border-color);
+                }}
+                
+                .download-grid {{
+                    grid-template-columns: 1fr;
+                }}
+            }}
         </style>
     </head>
     <body>
-        <h1>YouTube Video Downloader</h1>
-        
-        <div class="form-group">
-            <div class="system-status">
-                <p><strong>System Status:</strong></p>
-                <ul>
-                    <li>FFmpeg: <span class="status {("available" if FFMPEG_AVAILABLE else "unavailable")}">{ffmpeg_status}</span> 
-                        <span class="optimization-note">(Used for high-quality video/audio merging)</span>
-                    </li>
-                    <li>aria2c: <span class="status {("available" if ARIA2C_AVAILABLE else "unavailable")}">{aria2c_status}</span>
-                        <span class="optimization-note">(Used for multi-threaded, faster downloads)</span>
-                    </li>
-                </ul>
+        <div class="container">
+            <div class="header">
+                <h1><i class="fas fa-download"></i> YouTube Video Downloader</h1>
+                <p>Download videos and audio in your preferred format</p>
             </div>
-            <p>Enter a YouTube URL or video ID:</p>
-            <input type="text" id="videoInput" placeholder="https://www.youtube.com/watch?v=dQw4w9WgXcQ">
-            <button id="testBtn">Fetch Video</button>
-            <br>
-            <label><input type="checkbox" id="useFFmpeg" {("checked" if FFMPEG_AVAILABLE else "")}> Use FFmpeg for merging (if available locally)</label>
+            
+            <div class="form-section">
+                <div class="system-status">
+                    <div class="status-title"><i class="fas fa-server"></i> System Status</div>
+                    <div class="status-grid">
+                        <div class="status-item">
+                            <i class="fas fa-film" style="color: #ff4b4b;"></i>
+                            <div class="status-content">
+                                <div class="status-name">
+                                    FFmpeg
+                                    <span class="status-badge {("available" if FFMPEG_AVAILABLE else "unavailable")}">
+                                        {ffmpeg_status}
+                                    </span>
+                                </div>
+                                <div class="status-note">High-quality video/audio processing</div>
+                            </div>
+                        </div>
+                        <div class="status-item">
+                            <i class="fas fa-bolt" style="color: #fbbf24;"></i>
+                            <div class="status-content">
+                                <div class="status-name">
+                                    aria2c
+                                    <span class="status-badge {("available" if ARIA2C_AVAILABLE else "unavailable")}">
+                                        {aria2c_status}
+                                    </span>
+                                </div>
+                                <div class="status-note">Multi-threaded, faster downloads</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="videoInput">Enter a YouTube URL or video ID:</label>
+                    <div class="input-wrapper">
+                        <i class="fas fa-link input-icon"></i>
+                        <input type="text" id="videoInput" placeholder="https://www.youtube.com/watch?v=dQw4w9WgXcQ" 
+                               autocomplete="off" spellcheck="false">
+                        <button id="fetchBtn"><i class="fas fa-search"></i> Fetch</button>
+                    </div>
+                    
+                    <div class="toggle-container">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="useFFmpeg" {("checked" if FFMPEG_AVAILABLE else "")}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="toggle-label">
+                            <i class="fas fa-check-circle"></i> Use FFmpeg for better quality (recommended)
+                        </span>
+                    </div>
+                </div>
+                
+                <div id="result">
+                    <div class="loader" style="display: none;">
+                        <div class="spinner"></div>
+                        <p>Analyzing video content...</p>
+                    </div>
+                    <div class="info-message">
+                        <p><i class="fas fa-info-circle"></i> Enter a YouTube URL above and click "Fetch" to get download options</p>
+                    </div>
+                </div>
+            </div>
         </div>
         
-        <div id="result">
-            <p>Enter a YouTube URL above and click "Fetch Video"</p>
-        </div>
+        <footer>
+            <p>© 2025 YouTube Video Downloader | Powered by yt-dlp & FFmpeg</p>
+        </footer>
         
         <script>
-        document.getElementById('testBtn').addEventListener('click', async () => {{
+        document.getElementById('fetchBtn').addEventListener('click', async () => {{
             const input = document.getElementById('videoInput').value.trim();
             const resultDiv = document.getElementById('result');
+            const loader = document.querySelector('.loader');
+            const infoMessage = document.querySelector('.info-message');
             
             if (!input) {{
-                resultDiv.innerHTML = '<p style="color:red">Please enter a YouTube URL</p>';
+                resultDiv.innerHTML = `
+                    <div class="error-msg">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <span>Please enter a YouTube URL</span>
+                    </div>
+                    <div class="info-message">
+                        <p><i class="fas fa-info-circle"></i> Enter a YouTube URL above and click "Fetch" to get download options</p>
+                    </div>
+                `;
                 return;
             }}
             
-            resultDiv.innerHTML = '<p>Loading video information...</p>';
+            // Show loader, hide info message
+            if (loader) loader.style.display = 'flex';
+            if (infoMessage) infoMessage.style.display = 'none';
+            
+            // Clear previous content
+            resultDiv.innerHTML = `
+                <div class="loader">
+                    <div class="spinner"></div>
+                    <p>Analyzing video content...</p>
+                </div>
+            `;
             
             try {{
                 // Extract video ID
@@ -657,7 +1137,12 @@ def hello():
                 const data = await response.json();
                 
                 if (data.error) {{
-                    resultDiv.innerHTML = `<p style="color:red">Error: ${{data.error}}</p>`;
+                    resultDiv.innerHTML = `
+                        <div class="error-msg">
+                            <i class="fas fa-exclamation-circle"></i>
+                            <span>Error: ${{data.error}}</span>
+                        </div>
+                    `;
                     return;
                 }}
                 
@@ -668,35 +1153,82 @@ def hello():
                 let buttonsHtml = '';
                 if (data.formats && data.formats.length > 0) {{
                     data.formats.forEach(format => {{
-                        buttonsHtml += `<a class="download-btn" 
-                           href="/api/download?videoId=${{encodeURIComponent(videoId)}}&itag=${{format.itag}}&use_ffmpeg=${{useFFmpeg}}"
-                           target="_blank">
-                           Download ${{format.qualityLabel}} (${{format.container}})
-                        </a> `;
+                        // Determine if this is an audio format
+                        const isAudioOnly = format.qualityLabel.includes('Audio Only');
+                        const buttonClass = isAudioOnly ? 'download-btn audio' : 'download-btn';
+                        const icon = isAudioOnly ? 'fa-music' : 'fa-video';
+                        
+                        // Clean up format label for audio
+                        let formatLabel = format.qualityLabel;
+                        if (formatLabel.includes('(MP3)')) {{
+                            formatLabel = 'Audio Only (MP3)';
+                        }} else if (formatLabel.includes('(AAC)')) {{
+                            formatLabel = 'Audio Only (AAC)';
+                        }}
+                        
+                        buttonsHtml += `
+                            <a class="${{buttonClass}}" 
+                               href="/api/download?videoId=${{encodeURIComponent(videoId)}}&itag=${{format.itag}}&use_ffmpeg=${{useFFmpeg}}"
+                               target="_blank">
+                               <i class="fas ${{icon}}"></i> ${{formatLabel}}
+                            </a>
+                        `;
                     }});
                 }}
                 
                 // Display video info
                 resultDiv.innerHTML = `
                     <div class="video-info">
-                        <h2>${{data.title || 'Unknown Title'}}</h2>
-                        <p>${{data.channel || 'Unknown Channel'}}</p>
-                        <img src="${{data.thumbnail}}" class="video-thumbnail">
-                        <h3>Available Download Options:</h3>
-                        <div>${{buttonsHtml || 'No formats available'}}</div>
+                        <div class="video-details">
+                            <img src="${{data.thumbnail}}" class="video-thumbnail" alt="${{data.title}}">
+                            <div class="video-text">
+                                <h2>${{data.title || 'Unknown Title'}}</h2>
+                                <p><i class="fas fa-user"></i> ${{data.channel || 'Unknown Channel'}}</p>
+                                <p><i class="fas fa-info-circle"></i> Select your preferred format below</p>
+                            </div>
+                        </div>
+                        
+                        <div class="download-section">
+                            <h3><i class="fas fa-download"></i> Available Download Options</h3>
+                            <div class="download-grid">
+                                ${{buttonsHtml || '<p>No formats available</p>'}}
+                            </div>
+                        </div>
                     </div>
                 `;
             }} catch (error) {{
-                resultDiv.innerHTML = `<p style="color:red">Error: ${{error.message}}</p>`;
+                resultDiv.innerHTML = `
+                    <div class="error-msg">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <span>Error: ${{error.message}}</span>
+                    </div>
+                `;
             }}
+        }});
+        
+        // Auto-fetch on paste
+        document.getElementById('videoInput').addEventListener('paste', (e) => {{
+            // Short delay to let the paste complete
+            setTimeout(() => {{
+                const input = document.getElementById('videoInput').value.trim();
+                if (input && (input.includes('youtube.com') || input.includes('youtu.be'))) {{
+                    document.getElementById('fetchBtn').click();
+                }}
+            }}, 100);
         }});
         
         // Enter key event listener
         document.getElementById('videoInput').addEventListener('keypress', (e) => {{
             if (e.key === 'Enter') {{
-                document.getElementById('testBtn').click();
+                document.getElementById('fetchBtn').click();
             }}
         }});
+        
+        // Disable FFmpeg toggle if not available
+        if (!{FFMPEG_AVAILABLE}) {{
+            document.getElementById('useFFmpeg').disabled = true;
+            document.querySelector('.toggle-label').innerHTML += ' <span style="color: var(--error-color); font-size: 12px;">(Not available)</span>';
+        }}
         </script>
     </body>
     </html>
