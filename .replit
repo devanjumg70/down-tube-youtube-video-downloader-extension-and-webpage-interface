@@ -26,7 +26,7 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npx web-ext run --source-dir=./ --start-url=\"https://www.youtube.com\" --target=chromium"
+args = "npx web-ext run --source-dir=./ --target=chromium"
 
 [[workflows.workflow]]
 name = "Video Downloader Server"
@@ -38,7 +38,7 @@ args = "python server.py"
 waitForPort = 5000
 
 [deployment]
-run = ["sh", "-c", "npx web-ext run --source-dir=./ --start-url=\"https://www.youtube.com\" --target=chromium"]
+run = ["sh", "-c", "npx web-ext run --source-dir=./ --target=chromium"]
 
 [[ports]]
 localPort = 5000
