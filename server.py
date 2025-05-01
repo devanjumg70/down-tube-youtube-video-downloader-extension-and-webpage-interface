@@ -1309,8 +1309,8 @@ def hello():
                                <i class="fas ${icon}"></i> ${formatLabel}
                             </a>
                         `;
-                    }});
-                }}
+                    });
+                }
                 
                 // Display video info
                 resultDiv.innerHTML = `
@@ -1332,33 +1332,33 @@ def hello():
                         </div>
                     </div>
                 `;
-            }} catch (error) {{
+            } catch (error) {
                 resultDiv.innerHTML = `
                     <div class="error-msg">
                         <i class="fas fa-exclamation-circle"></i>
-                        <span>Error: ${{error.message}}</span>
+                        <span>Error: ${error.message}</span>
                     </div>
                 `;
-            }}
-        }});
+            }
+        });
         
         // Auto-fetch on paste
-        document.getElementById('videoInput').addEventListener('paste', (e) => {{
+        document.getElementById('videoInput').addEventListener('paste', (e) => {
             // Short delay to let the paste complete
-            setTimeout(() => {{
+            setTimeout(() => {
                 const input = document.getElementById('videoInput').value.trim();
-                if (input && (input.includes('youtube.com') || input.includes('youtu.be'))) {{
+                if (input && (input.includes('youtube.com') || input.includes('youtu.be'))) {
                     document.getElementById('fetchBtn').click();
-                }}
-            }}, 100);
-        }});
+                }
+            }, 100);
+        });
         
         // Enter key event listener
-        document.getElementById('videoInput').addEventListener('keypress', (e) => {{
-            if (e.key === 'Enter') {{
+        document.getElementById('videoInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
                 document.getElementById('fetchBtn').click();
-            }}
-        }});
+            }
+        });
         
         // Disable FFmpeg toggle if not available
         const ffmpegAvailable = """ + ("true" if FFMPEG_AVAILABLE else "false") + """;
