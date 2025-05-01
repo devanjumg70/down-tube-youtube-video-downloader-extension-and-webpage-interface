@@ -5,38 +5,59 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Video Downloader</title>
   <link rel="stylesheet" href="popup.css">
-  <link href="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>Video Downloader</h1>
-      <p>Download videos in your preferred resolution</p>
+      <div class="logo">
+        <i class="fas fa-download"></i>
+        <h1>Video Downloader</h1>
+      </div>
+      <p>Get high-quality videos with audio</p>
     </header>
     
     <div class="input-container">
-      <input type="text" id="video-url" placeholder="Paste YouTube URL here">
-      <button id="fetch-btn">Fetch Video</button>
+      <div class="url-input-wrapper">
+        <i class="fas fa-link input-icon"></i>
+        <input type="text" id="video-url" placeholder="YouTube URL auto-detected">
+      </div>
+      <button id="fetch-btn">
+        <i class="fas fa-search"></i>
+      </button>
+    </div>
+
+    <div class="options-container">
+      <label class="toggle-switch">
+        <input type="checkbox" id="use-ffmpeg" checked>
+        <span class="toggle-slider"></span>
+        <span class="toggle-label">Use FFmpeg (better quality)</span>
+      </label>
     </div>
     
     <div id="loader" class="hidden">
-      <div class="spinner"></div>
-      <p>Fetching video information...</p>
+      <div class="spinner-container">
+        <div class="spinner"></div>
+      </div>
+      <p>Analyzing video...</p>
     </div>
     
     <div id="error-container" class="hidden">
+      <i class="fas fa-exclamation-circle error-icon"></i>
       <p id="error-message"></p>
     </div>
     
     <div id="video-info" class="hidden">
       <div class="video-details">
-        <h2 id="video-title"></h2>
-        <p id="video-channel"></p>
         <img id="video-thumbnail" src="" alt="Video thumbnail">
+        <div class="title-container">
+          <h2 id="video-title"></h2>
+          <p id="video-channel"></p>
+        </div>
       </div>
       
       <div class="download-options">
-        <h3>Available Resolutions:</h3>
+        <h3><i class="fas fa-film"></i> Available Formats:</h3>
         <div id="resolution-buttons">
           <!-- Resolution buttons will be added here dynamically -->
         </div>
@@ -44,7 +65,8 @@
     </div>
     
     <footer>
-      <p>Note: This extension works best with YouTube videos</p>
+      <p><i class="fas fa-info-circle"></i> Auto-fetches from current YouTube tab</p>
+      <p class="version">v1.0</p>
     </footer>
   </div>
   

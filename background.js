@@ -28,7 +28,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // Indicates async response
   } 
   else if (request.action === 'downloadVideo') {
-    downloadVideo(request.videoId, request.itag, request.fileName, request.downloadUrl, sendResponse);
+    downloadVideo(request.videoId, request.itag, request.fileName, request.downloadUrl, request.useFFmpeg, sendResponse);
     return true; // Indicates async response
   }
 });
@@ -108,12 +108,16 @@ async function fetchVideoInfo(videoId, sendResponse) {
  * @param {string} itag - The format identifier
  * @param {string} fileName - The file name for the download
  * @param {string} downloadUrl - The direct download URL from our server
+ * @param {boolean} useFFmpeg - Whether to use FFmpeg for audio/video merging
  * @param {function} sendResponse - Callback to send response to popup
  */
-async function downloadVideo(videoId, itag, fileName, downloadUrl, sendResponse) {
+async function downloadVideo(videoId, itag, fileName, downloadUrl, useFFmpeg, sendResponse) {
   try {
+    console.log(`Download requested: videoId=${videoId}, itag=${itag}, useFFmpeg=${useFFmpeg}`);
+    
     if (downloadUrl) {
       // Use the direct download URL from our server
+      console.log('Using direct download URL');
       chrome.downloads.download({
         url: downloadUrl,
         filename: sanitizeFileName(fileName),
@@ -127,7 +131,14 @@ async function downloadVideo(videoId, itag, fileName, downloadUrl, sendResponse)
       });
     } else {
       // If we don't have a direct URL, call our API server to get one
-      const apiUrl = `${API_SERVER}/api/download?videoId=${videoId}&itag=${itag}`;
+      let apiUrl = `${API_SERVER}/api/download?videoId=${videoId}&itag=${itag}`;
+      
+      // Add FFmpeg parameter if specified
+      if (useFFmpeg !== undefined) {
+        apiUrl += `&useFFmpeg=${useFFmpeg ? 'true' : 'false'}`;
+      }
+      
+      console.log('Starting download with API URL:', apiUrl);
       
       // Start the download via the server
       chrome.downloads.download({
@@ -136,8 +147,10 @@ async function downloadVideo(videoId, itag, fileName, downloadUrl, sendResponse)
         saveAs: true
       }, (downloadId) => {
         if (chrome.runtime.lastError) {
+          console.error('Chrome download error:', chrome.runtime.lastError);
           sendResponse({ error: chrome.runtime.lastError.message });
         } else {
+          console.log('Download started with ID:', downloadId);
           sendResponse({ success: true, downloadId });
         }
       });
