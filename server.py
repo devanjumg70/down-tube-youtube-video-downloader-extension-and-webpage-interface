@@ -28,8 +28,19 @@ def check_ffmpeg():
         logger.warning("FFmpeg is not available, falling back to yt-dlp merging")
         return False
 
-# Global flag for FFmpeg availability
+# Check if aria2c is available
+def check_aria2c():
+    try:
+        subprocess.run(['aria2c', '--version'], check=True, capture_output=True)
+        logger.info("aria2c is available")
+        return True
+    except (subprocess.SubprocessError, FileNotFoundError):
+        logger.warning("aria2c is not available, falling back to default downloader")
+        return False
+
+# Global flags for tool availability
 FFMPEG_AVAILABLE = check_ffmpeg()
+ARIA2C_AVAILABLE = check_aria2c()
 
 # Add CORS headers to all responses
 @app.after_request
@@ -137,7 +148,8 @@ def get_video_info():
                 "channel": info.get("uploader", "YouTube Channel"),
                 "thumbnail": info.get("thumbnail", f"https://i.ytimg.com/vi/{video_id}/maxresdefault.jpg"),
                 "formats": formats,
-                "ffmpeg_available": FFMPEG_AVAILABLE
+                "ffmpeg_available": FFMPEG_AVAILABLE,
+                "aria2c_available": ARIA2C_AVAILABLE
             })
     except Exception as e:
         logger.error(f"Error extracting video info: {str(e)}")
@@ -168,16 +180,39 @@ def download_with_ytdlp(url, video_id, itag, file_id):
     """Download and process using yt-dlp's built-in merging capability"""
     output_path = os.path.join(TEMP_DIR, f"youtube_{video_id}_{file_id}.mp4")
     
+    # Check if a format has both video and audio streams
+    has_both_streams = False
+    try:
+        # Quick info check to identify combined formats
+        with YoutubeDL({"quiet": True, "skip_download": True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+            for f in info["formats"]:
+                if f["format_id"] == itag and f.get("vcodec") != "none" and f.get("acodec") != "none":
+                    has_both_streams = True
+                    logger.info(f"Format {itag} already has both video and audio streams")
+                    break
+    except Exception as e:
+        logger.warning(f"Error checking format streams: {str(e)}")
+    
     # Set up options for yt-dlp
     ydl_opts = {
-        "format": f"{itag}+bestaudio/best",  # Specified format + best audio, or best combined format
+        # If format already has both streams, just use that format directly
+        "format": itag if has_both_streams else f"{itag}+bestaudio/best",
         "merge_output_format": "mp4",        # Force mp4 for compatibility
         "outtmpl": output_path,              # Output filename template
         "quiet": True,                       # Don't print progress
     }
     
+    # If aria2c is available, use it for faster downloading
+    if ARIA2C_AVAILABLE:
+        logger.info("Using aria2c for multi-threaded downloading")
+        ydl_opts.update({
+            "external_downloader": "aria2c",
+            "external_downloader_args": ["--max-connection-per-server=16", "--min-split-size=1M", "--max-concurrent-downloads=16"]
+        })
+    
     try:
-        logger.info(f"Starting download with yt-dlp...")
+        logger.info(f"Starting download with yt-dlp... (using aria2c: {ARIA2C_AVAILABLE})")
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             
@@ -227,29 +262,62 @@ def download_with_ffmpeg(url, video_id, itag, file_id):
     output_path = os.path.join(TEMP_DIR, f"merged_{video_id}_{file_id}.mp4")
     
     try:
-        # First get info to get title
+        # First check if the format already has audio (to avoid unnecessary processing)
+        has_both_streams = False
+        try:
+            # Quick info check to identify combined formats
+            with YoutubeDL({"quiet": True, "skip_download": True}) as ydl:
+                info = ydl.extract_info(url, download=False)
+                for f in info["formats"]:
+                    if f["format_id"] == itag and f.get("vcodec") != "none" and f.get("acodec") != "none":
+                        has_both_streams = True
+                        logger.info(f"Format {itag} already has both video and audio streams")
+                        break
+            
+            # If format already has both streams, use direct yt-dlp download
+            if has_both_streams:
+                logger.info("Using direct download since format already has both audio and video")
+                return download_with_ytdlp(url, video_id, itag, file_id)
+        
+        except Exception as e:
+            logger.warning(f"Error checking format streams: {str(e)}")
+        
+        # Get video info for title
         with YoutubeDL({"quiet": True}) as ydl:
             info = ydl.extract_info(url, download=False)
             title = info.get('title', 'video').replace(' ', '_')
             # Sanitize filename
             title = "".join(c for c in title if c.isalnum() or c in [' ', '_', '-']).rstrip()
         
-        # Download video
-        video_opts = {
-            "format": itag,
-            "outtmpl": temp_video,
+        # Set up base options
+        base_opts = {
             "quiet": True,
         }
+        
+        # Add aria2c if available
+        if ARIA2C_AVAILABLE:
+            logger.info("Using aria2c for multi-threaded downloading")
+            base_opts.update({
+                "external_downloader": "aria2c",
+                "external_downloader_args": ["--max-connection-per-server=16", "--min-split-size=1M", "--max-concurrent-downloads=16"]
+            })
+        
+        # Download video
+        video_opts = base_opts.copy()
+        video_opts.update({
+            "format": itag,
+            "outtmpl": temp_video,
+        })
         logger.info(f"Downloading video stream with format {itag}")
         with YoutubeDL(video_opts) as ydl:
             ydl.download([url])
         
         # Download audio
-        audio_opts = {
-            "format": "bestaudio[ext=m4a]",
+        audio_opts = base_opts.copy()
+        audio_opts.update({
+            "format": "bestaudio[ext=m4a]/bestaudio",
             "outtmpl": temp_audio,
-            "quiet": True,
-        }
+        })
         logger.info("Downloading audio stream")
         with YoutubeDL(audio_opts) as ydl:
             ydl.download([url])
@@ -259,15 +327,20 @@ def download_with_ffmpeg(url, video_id, itag, file_id):
             logger.error("Video or audio file not downloaded correctly")
             return jsonify({"error": "Failed to download video or audio streams"}), 500
         
-        # Merge with FFmpeg
+        # Merge with FFmpeg (optimized parameters)
         logger.info("Merging video and audio with FFmpeg")
         ffmpeg_cmd = [
             'ffmpeg', 
-            '-i', temp_video, 
-            '-i', temp_audio, 
-            '-c:v', 'copy', 
-            '-c:a', 'aac', 
-            '-strict', 'experimental',
+            '-hide_banner', '-nostats',           # Reduce console output
+            '-i', temp_video,                     # Video input
+            '-i', temp_audio,                     # Audio input
+            '-map', '0:v:0',                      # Use first video stream from first input
+            '-map', '1:a:0',                      # Use first audio stream from second input
+            '-c:v', 'copy',                       # Copy video (no re-encoding)
+            '-c:a', 'aac',                        # Use AAC for audio (widely compatible)
+            '-b:a', '192k',                       # Good quality audio bitrate
+            '-movflags', '+faststart',            # Optimize for web streaming
+            '-metadata', f'title={title}',        # Add title metadata
             output_path
         ]
         subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
@@ -313,6 +386,7 @@ def download_with_ffmpeg(url, video_id, itag, file_id):
 def hello():
     # Simple static HTML
     ffmpeg_status = "available" if FFMPEG_AVAILABLE else "not available"
+    aria2c_status = "available" if ARIA2C_AVAILABLE else "not available"
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -331,18 +405,30 @@ def hello():
             .status {{ padding: 3px 8px; border-radius: 3px; font-weight: bold; }}
             .available {{ background: #d4edda; color: #155724; }}
             .unavailable {{ background: #f8d7da; color: #721c24; }}
+            .system-status {{ margin-bottom: 10px; }}
+            .optimization-note {{ font-size: 0.9em; color: #6c757d; margin-top: 5px; }}
         </style>
     </head>
     <body>
         <h1>YouTube Video Downloader</h1>
         
         <div class="form-group">
-            <p><strong>System Status:</strong> FFmpeg is <span class="status {("available" if FFMPEG_AVAILABLE else "unavailable")}">{ffmpeg_status}</span></p>
+            <div class="system-status">
+                <p><strong>System Status:</strong></p>
+                <ul>
+                    <li>FFmpeg: <span class="status {("available" if FFMPEG_AVAILABLE else "unavailable")}">{ffmpeg_status}</span> 
+                        <span class="optimization-note">(Used for high-quality video/audio merging)</span>
+                    </li>
+                    <li>aria2c: <span class="status {("available" if ARIA2C_AVAILABLE else "unavailable")}">{aria2c_status}</span>
+                        <span class="optimization-note">(Used for multi-threaded, faster downloads)</span>
+                    </li>
+                </ul>
+            </div>
             <p>Enter a YouTube URL or video ID:</p>
             <input type="text" id="videoInput" placeholder="https://www.youtube.com/watch?v=dQw4w9WgXcQ">
             <button id="testBtn">Fetch Video</button>
             <br>
-            <label><input type="checkbox" id="useFFmpeg"> Use FFmpeg for merging (if available locally)</label>
+            <label><input type="checkbox" id="useFFmpeg" {("checked" if FFMPEG_AVAILABLE else "")}> Use FFmpeg for merging (if available locally)</label>
         </div>
         
         <div id="result">

@@ -362,6 +362,99 @@ The extension requires explicit permissions in `manifest.json` to access:
 
 ## Optimization Techniques
 
+### Performance Optimizations
+
+The server employs several strategies to optimize download and processing speed:
+
+#### 1. Multi-threaded Downloads with aria2c
+
+The server automatically detects and utilizes aria2c for faster downloads:
+
+```python
+# Check if aria2c is available
+def check_aria2c():
+    try:
+        subprocess.run(['aria2c', '--version'], check=True, capture_output=True)
+        logger.info("aria2c is available")
+        return True
+    except (subprocess.SubprocessError, FileNotFoundError):
+        logger.warning("aria2c is not available, falling back to default downloader")
+        return False
+
+# When aria2c is available, add multi-threading options
+if ARIA2C_AVAILABLE:
+    ydl_opts.update({
+        "external_downloader": "aria2c",
+        "external_downloader_args": [
+            "--max-connection-per-server=16", 
+            "--min-split-size=1M", 
+            "--max-concurrent-downloads=16"
+        ]
+    })
+```
+
+#### 2. Optimized FFmpeg Parameters
+
+FFmpeg merging uses optimized parameters for faster processing and better quality:
+
+```python
+ffmpeg_cmd = [
+    'ffmpeg', 
+    '-hide_banner', '-nostats',           # Reduce console output
+    '-i', temp_video,                     # Video input
+    '-i', temp_audio,                     # Audio input
+    '-map', '0:v:0',                      # Use first video stream from first input
+    '-map', '1:a:0',                      # Use first audio stream from second input
+    '-c:v', 'copy',                       # Copy video (no re-encoding)
+    '-c:a', 'aac',                        # Use AAC for audio (widely compatible)
+    '-b:a', '192k',                       # Good quality audio bitrate
+    '-movflags', '+faststart',            # Optimize for web streaming
+    '-metadata', f'title={title}',        # Add title metadata
+    output_path
+]
+```
+
+#### 3. Direct Format Selection
+
+The server detects and prioritizes formats that already have both video and audio:
+
+```python
+# Check if a format has both video and audio streams
+has_both_streams = False
+try:
+    with YoutubeDL({"quiet": True, "skip_download": True}) as ydl:
+        info = ydl.extract_info(url, download=False)
+        for f in info["formats"]:
+            if f["format_id"] == itag and f.get("vcodec") != "none" and f.get("acodec") != "none":
+                has_both_streams = True
+                logger.info(f"Format {itag} already has both video and audio streams")
+                break
+    
+    # If format already has both streams, use direct download
+    ydl_opts = {
+        "format": itag if has_both_streams else f"{itag}+bestaudio/best",
+        # Other options...
+    }
+except Exception as e:
+    logger.warning(f"Error checking format streams: {str(e)}")
+```
+
+#### 4. Efficient Cleanup
+
+The server uses background cleanup to ensure temporary files are removed:
+
+```python
+@response.call_on_close
+def cleanup():
+    try:
+        for file_path in [temp_video, temp_audio, output_path]:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                logger.info(f"Removed temporary file: {file_path}")
+    except Exception as e:
+        logger.error(f"Error removing files: {str(e)}")
+```
+
 ### Format Filtering
 
 Instead of offering all available formats (which can be numerous), the server filters to common resolutions:

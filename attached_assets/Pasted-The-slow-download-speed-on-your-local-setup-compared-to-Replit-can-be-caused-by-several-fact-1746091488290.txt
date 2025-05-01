@@ -1,0 +1,92 @@
+The **slow download speed** on your local setup compared to **Replit** can be caused by several factors. Here's a breakdown of likely reasons and how to improve it:
+
+---
+
+### ✅ **Why yt-dlp is downloading slowly on your PC**
+1. **Slow Internet or ISP Throttling**
+   - Your local internet speed may be slower or throttled for video streaming/downloads.
+   - Try running a speed test (e.g., [fast.com](https://fast.com)) to check.
+
+2. **yt-dlp Default Fragmented Streaming (DASH)**
+   - yt-dlp downloads YouTube videos in **DASH format**, i.e., **multiple small fragments**, especially for `mp4` and `webm` streams.
+   - This is slower than downloading a full file in one go.
+
+3. **Single Threaded Downloads**
+   - yt-dlp by default downloads streams in a single thread. Unlike Replit, which might benefit from CDN proximity or faster backend networks, your PC handles everything on its own.
+
+4. **Firewall or Antivirus**
+   - Security software on Windows (like Windows Defender or third-party antivirus) may **scan every fragment**, which **slows** things down.
+
+5. **No `--downloader` set to `aria2c`**
+   - yt-dlp supports external downloaders like **aria2c** which are much faster (multi-threaded).
+
+---
+
+### ✅ **How to Fix / Speed It Up**
+
+#### ✅ A. Use `aria2c` Downloader (Highly Recommended)
+Install [aria2](https://aria2.github.io/) and set yt-dlp to use it for faster, multi-threaded downloading:
+
+1. **Install aria2c**:
+   - [Download for Windows](https://github.com/aria2/aria2/releases)
+   - Add `aria2c.exe` to your system PATH.
+
+2. **Change yt-dlp options in your `server.py` like this**:
+
+```python
+ydl_opts = {
+    'format': f"{video_format}+bestaudio/best",
+    'outtmpl': os.path.join(DOWNLOAD_PATH, f'{video_id}.%(ext)s'),
+    'external_downloader': 'aria2c',
+    'external_downloader_args': ['-x', '16', '-k', '1M'],
+    'quiet': True,
+}
+```
+
+Explanation:
+- `-x 16` = 16 connections (increase or decrease based on your network)
+- `-k 1M` = chunk size of 1MB
+
+This alone can **increase speeds 5x or more**.
+
+---
+
+#### ✅ B. Use `merge_output_format`
+To reduce time spent on post-processing (merging), make sure you're specifying the right output:
+
+```python
+ydl_opts = {
+    'merge_output_format': 'mp4',
+    ...
+}
+```
+
+---
+
+#### ✅ C. Reduce Logging / Console Output
+Too much logging in Windows PowerShell can actually slow things down. Use `quiet: True` and log only essentials.
+
+---
+
+#### ✅ D. Optional: Use Direct File Formats Instead of DASH
+If you're okay with slightly less control over resolution:
+```python
+'format': 'best[ext=mp4]'
+```
+
+But this may give you a merged (lower-quality) version that doesn't require FFmpeg.
+
+---
+
+### ✅ Summary Fixes You Should Try
+| Step | Action |
+|------|--------|
+| ✅ 1 | Install and use `aria2c` as external downloader |
+| ✅ 2 | Set `external_downloader_args` to multi-threaded mode |
+| ✅ 3 | Ensure antivirus is not slowing things (test with it temporarily disabled) |
+| ✅ 4 | Reduce verbose console output |
+| ✅ 5 | Make sure your internet connection is stable |
+
+---
+
+Would you like help modifying your `server.py` to fully support `aria2c` right now?
