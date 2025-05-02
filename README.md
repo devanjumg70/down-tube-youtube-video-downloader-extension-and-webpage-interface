@@ -9,10 +9,13 @@ A Chrome extension that allows users to download videos from YouTube in various 
 - View available download options in different resolutions (360p, 480p, 720p, 1080p, audio-only)
 - Download videos with a simple click
 - Download entire YouTube playlists with batch processing
+- Smart format selection that automatically finds the best available resolution for each video
+- Reliable batch downloading with intelligent format fallback when exact formats aren't available
 - Track download progress for batch operations
 - Multi-threaded downloading with aria2c integration
 - FFmpeg integration for high-quality video/audio merging
 - Fallback mechanisms if connection to server fails
+- Flask application context handling for robust background processing
 
 ## System Requirements
 
@@ -39,7 +42,7 @@ A Chrome extension that allows users to download videos from YouTube in various 
    python server.py
    ```
    
-   The server will run on `http://localhost:8080` by default.
+   The server will run on `http://localhost:5000` by default.
 
 ### Step 2: Installing the Chrome Extension
 
@@ -93,6 +96,12 @@ A Chrome extension that allows users to download videos from YouTube in various 
   - Check server console for any error messages
   - Make sure you have sufficient disk space
   - Try with a smaller playlist first
+  
+- **"Requested format is not available" errors**:
+  - This is normal and automatically handled now with smart format selection
+  - The system will automatically find the closest available format for each video
+  - You can check the server logs to see what format was actually used
+  - If you consistently have issues with a specific format, try a different resolution
 
 - **Slow download speeds**:
   - Enable the aria2c option for multi-threaded downloads

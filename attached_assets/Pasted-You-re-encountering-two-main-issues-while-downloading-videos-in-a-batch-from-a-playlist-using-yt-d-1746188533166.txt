@@ -1,0 +1,87 @@
+You're encountering two main issues while downloading videos in a **batch from a playlist using yt-dlp + FFmpeg**:
+
+---
+
+## ✅ Issue 1: **Requested format is not available**
+
+### 🔍 Explanation:
+
+The requested video format (like `1080` or `720`) **doesn't exist** for certain videos. yt-dlp can't find that specific format.
+
+### ✅ Solution:
+
+Use `--list-formats` to dynamically fetch available formats **per video**, then choose the **best match** rather than hardcoding `1080` or `720`.
+
+### 🔧 Fix:
+
+Update your download logic to:
+
+```python
+import yt_dlp
+
+def get_best_format(video_url, target_resolution=None):
+    ydl_opts = {'quiet': True, 'listformats': True}
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(video_url, download=False)
+        formats = info.get('formats', [])
+        best_match = None
+        for fmt in formats:
+            if fmt.get("height") and (target_resolution is None or fmt["height"] == target_resolution):
+                best_match = fmt["format_id"]
+        return best_match or 'best'
+```
+
+Then call it like:
+
+```python
+format_id = get_best_format(video_url, 1080)
+```
+
+---
+
+## ✅ Issue 2: **"Working outside of application context"**
+
+### 🔍 Explanation:
+
+You're calling Flask-dependent logic (like logging, or session access) from **outside the Flask `app_context()`**, especially inside background threads or subprocess callbacks.
+
+### ✅ Solution:
+
+Wrap your background tasks (like batch downloads) in an app context:
+
+```python
+from flask import current_app
+
+def background_download_job():
+    with current_app.app_context():
+        # your logic here
+```
+
+Or if you're launching via `Thread`, pass the context like:
+
+```python
+def run_in_context(target):
+    with app.app_context():
+        target()
+
+threading.Thread(target=lambda: run_in_context(download_function)).start()
+```
+
+---
+
+## 🛠 Additional Tips:
+
+* Log the actual formats available with `yt_dlp` using:
+
+```bash
+yt-dlp -F "https://www.youtube.com/watch?v=VIDEO_ID"
+```
+
+to debug what’s missing.
+
+* Use `merge_output_format` if you're combining audio + video with FFmpeg to standardize output.
+* Catch and log all yt-dlp and FFmpeg exceptions properly to avoid silent failures.
+
+---
+
+Would you like me to refactor your full `batch_download` handler to include these fixes?

@@ -187,7 +187,37 @@ print(f"Request headers: {dict(request.headers)}")
 - Created a temporary file approach to properly process the combined streams
 - Used Flask's send_file to serve the processed files with proper cleanup
 
-### 6. YouTube API Changes
+### 6. Format Availability in Batch Downloads
+
+**Challenge**: When batch downloading videos from a playlist, not all videos have the same available formats, causing failures when a specific format (like 1080p or 720p) doesn't exist for certain videos.
+
+**Solution**:
+- Implemented an intelligent format selection system that:
+  1. Extracts all available formats for each video individually
+  2. Finds the best match for the requested resolution (same or closest lower quality)
+  3. Falls back to "best" format when no suitable match is found
+- Added detailed logging to track format selection decisions
+- Improved error handling to continue batch processing even if some videos fail
+- Used format mapping to handle both numeric (1080, 720) and string format specifiers
+
+### 7. Flask Application Context in Background Threads
+
+**Challenge**: Background processing for batch downloads was triggering Flask context errors when trying to access Flask-dependent functionality from threads.
+
+**Solution**:
+- Wrapped batch processing functions with proper Flask application context:
+```python
+def run_with_app_context():
+    with app.app_context():
+        process_batch()
+        
+thread = threading.Thread(target=run_with_app_context)
+```
+- Created helper functions to ensure consistent application context handling
+- Added additional error handling to prevent thread crashes from affecting the main application
+- Improved logging to better diagnose context-related issues
+
+### 8. YouTube API Changes
 
 **Challenge**: YouTube's API might change, breaking existing extraction methods.
 

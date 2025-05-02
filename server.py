@@ -762,6 +762,59 @@ def batch_download():
     logger.info(f"Starting batch download for playlist ID: {playlist_id}, format: {format_id}, job ID: {job_id}")
     
     # We'll process this in a background thread to avoid blocking the response
+    def get_best_format(video_url, target_resolution=None):
+        """Get the best available format for a video that matches the target resolution"""
+        ydl_opts = {"quiet": True, "listformats": True}
+        with YoutubeDL(ydl_opts) as ydl:
+            try:
+                info = ydl.extract_info(video_url, download=False)
+                formats = info.get('formats', [])
+                
+                if not target_resolution or target_resolution == "best":
+                    return "best"
+                
+                # Try to find the exact match for target resolution
+                resolution_map = {
+                    "1080": 1080,
+                    "720": 720,
+                    "480": 480,
+                    "360": 360,
+                    "audio": 0  # Special case for audio
+                }
+                
+                target_height = resolution_map.get(str(target_resolution), None)
+                if target_height is None:
+                    return "best"  # Default to best if invalid resolution
+                
+                # For audio only request
+                if target_resolution == "audio" or target_height == 0:
+                    audio_formats = [f for f in formats if f.get("vcodec") == "none" and f.get("acodec") != "none"]
+                    if audio_formats:
+                        return max(audio_formats, key=lambda x: x.get("quality", 0)).get("format_id", "bestaudio")
+                    return "bestaudio"
+                
+                # For video requests, find closest match
+                video_formats = [f for f in formats if 
+                                f.get("height") and 
+                                f.get("vcodec") != "none" and
+                                f.get("height") <= target_height]
+                
+                if video_formats:
+                    # Find format with closest height to target
+                    best_video = max(video_formats, key=lambda x: x.get("height", 0))
+                    return best_video.get("format_id", "best")
+                
+                # If no suitable format found, use the default best
+                return "best"
+            except Exception as e:
+                logger.error(f"Error finding best format for {video_url}: {str(e)}")
+                return "best"  # Default to best on error
+                
+    def run_in_app_context(func, *args, **kwargs):
+        """Run a function within the Flask application context"""
+        with app.app_context():
+            return func(*args, **kwargs)
+            
     def process_batch():
         try:
             # First, get the list of videos
@@ -805,12 +858,16 @@ def batch_download():
                         # For each video, create a unique filename
                         file_id = str(uuid.uuid4())
                         
+                        # Get the best available format for this specific video that matches the target
+                        actual_format = get_best_format(video_url, format_id)
+                        logger.info(f"Selected format {actual_format} for video {video_id} (requested: {format_id})")
+                        
                         if FFMPEG_AVAILABLE and use_ffmpeg:
                             logger.info(f"Processing video {i+1}/{total_videos}: {video_id} with FFmpeg")
-                            output_path = download_with_ffmpeg(video_url, video_id, format_id, file_id, is_batch=True)
+                            output_path = download_with_ffmpeg(video_url, video_id, actual_format, file_id, is_batch=True)
                         else:
                             logger.info(f"Processing video {i+1}/{total_videos}: {video_id} with yt-dlp")
-                            output_path = download_with_ytdlp(video_url, video_id, format_id, file_id, is_batch=True)
+                            output_path = download_with_ytdlp(video_url, video_id, actual_format, file_id, is_batch=True)
                         
                         if output_path:
                             success_count += 1
@@ -850,8 +907,12 @@ def batch_download():
         'completed_at': None
     }
     
-    # Start the background thread
-    thread = threading.Thread(target=process_batch)
+    # Start the background thread with Flask app context
+    def run_with_app_context():
+        with app.app_context():
+            process_batch()
+            
+    thread = threading.Thread(target=run_with_app_context)
     thread.daemon = True
     thread.start()
     
