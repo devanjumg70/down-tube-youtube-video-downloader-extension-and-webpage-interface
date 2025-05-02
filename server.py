@@ -1,15 +1,12 @@
 from flask import Flask, jsonify, request, redirect, send_file, Response
 from yt_dlp import YoutubeDL
 from flask_cors import CORS
-from flask_socketio import SocketIO
 import os
 import tempfile
 import logging
 import time
 import uuid
 import subprocess
-import json
-import threading
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -17,74 +14,14 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Temp directory for downloaded files
 TEMP_DIR = tempfile.gettempdir()
 
-# Track download progress
-download_progress = {}
-
-# Define a progress hook for yt-dlp
-def progress_hook(d):
-    # Make sure d['info_dict'] is a dictionary before accessing it
-    info_dict = d.get('info_dict', {})
-    
-    # Handle both string and dict types for download_id
-    if isinstance(info_dict, dict):
-        file_id = info_dict.get('__download_id', '')
-    else:
-        # Log the type and try to handle it
-        logger.warning(f"info_dict is not a dictionary: {type(info_dict)}")
-        try:
-            # This is a fallback - try to use the filename or another identifier
-            file_id = d.get('filename', '').split('_')[-2] if '_' in d.get('filename', '') else ''
-        except Exception as e:
-            logger.error(f"Error extracting file_id: {str(e)}")
-            file_id = ''
-    
-    if file_id and file_id in download_progress:
-        if d['status'] == 'downloading':
-            # Calculate progress percentage
-            total_bytes = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
-            downloaded_bytes = d.get('downloaded_bytes', 0)
-            
-            if total_bytes > 0:
-                progress = (downloaded_bytes / total_bytes) * 100
-                speed = d.get('speed', 0)
-                eta = d.get('eta', 0)
-                
-                # Update progress info
-                download_progress[file_id].update({
-                    'progress': round(progress, 2),
-                    'speed': speed,
-                    'eta': eta,
-                    'size': total_bytes,
-                    'downloaded': downloaded_bytes,
-                    'status': 'downloading'
-                })
-                
-                # Emit progress update
-                socketio.emit(f'progress_update_{file_id}', download_progress[file_id])
-        
-        elif d['status'] == 'finished':
-            download_progress[file_id].update({
-                'progress': 100,
-                'status': 'processing'
-            })
-            socketio.emit(f'progress_update_{file_id}', download_progress[file_id])
-            
-        elif d['status'] == 'error':
-            download_progress[file_id].update({
-                'status': 'error',
-                'error': d.get('error', 'Unknown error')
-            })
-            socketio.emit(f'progress_update_{file_id}', download_progress[file_id])
-
 # Check if ffmpeg is available
 def check_ffmpeg():
     try:
-        subprocess.run(['ffmpeg', '-version'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        subprocess.run(['ffmpeg', '-version'], check=True, capture_output=True)
         logger.info("FFmpeg is available")
         return True
     except (subprocess.SubprocessError, FileNotFoundError):
@@ -94,7 +31,7 @@ def check_ffmpeg():
 # Check if aria2c is available
 def check_aria2c():
     try:
-        subprocess.run(['aria2c', '--version'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        subprocess.run(['aria2c', '--version'], check=True, capture_output=True)
         logger.info("aria2c is available")
         return True
     except (subprocess.SubprocessError, FileNotFoundError):
@@ -290,16 +227,6 @@ def download_with_ytdlp(url, video_id, itag, file_id):
     """Download and process using yt-dlp's built-in merging capability"""
     output_path = os.path.join(TEMP_DIR, f"youtube_{video_id}_{file_id}.mp4")
     
-    # Initialize progress tracking for this download
-    download_progress[file_id] = {
-        'progress': 0,
-        'speed': 0,
-        'eta': 0,
-        'status': 'starting',
-        'video_id': video_id,
-        'file_id': file_id
-    }
-    
     # Check if a format has both video and audio streams
     has_both_streams = False
     try:
@@ -368,20 +295,6 @@ def download_with_ytdlp(url, video_id, itag, file_id):
             
             logger.info(f"Audio-only download with format: {audio_format}")
             
-        # Add progress tracking
-        def ytdlp_direct_hook(d):
-            # Add file_id to info_dict for our progress_hook
-            if 'info_dict' in d and isinstance(d['info_dict'], dict):
-                d['info_dict']['__download_id'] = file_id
-            progress_hook(d)
-            
-        ydl_opts["progress_hooks"] = [ytdlp_direct_hook]
-        
-        # Add download ID to track this specific file - store as string to avoid dict decode errors
-        if 'postprocessor_args' not in ydl_opts:
-            ydl_opts['postprocessor_args'] = {}
-        ydl_opts['postprocessor_args']['__download_id'] = file_id
-        
         # Perform the download
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
@@ -443,18 +356,6 @@ def download_with_ytdlp(url, video_id, itag, file_id):
 
 def download_with_ffmpeg(url, video_id, itag, file_id):
     """Download video and audio separately and merge with FFmpeg, or handle audio-only formats"""
-    # Initialize progress tracking for this download
-    download_progress[file_id] = {
-        'progress': 0,
-        'speed': 0,
-        'eta': 0,
-        'status': 'starting',
-        'video_id': video_id,
-        'file_id': file_id,
-        'stage': 'initialization'
-    }
-    socketio.emit(f'progress_update_{file_id}', download_progress[file_id])
-    
     # First check if this is an audio-only format
     audio_only = False
     audio_format = "mp3"  # Default audio format is MP3 for better compatibility
@@ -506,20 +407,6 @@ def download_with_ffmpeg(url, video_id, itag, file_id):
                 "external_downloader_args": ["--max-connection-per-server=16", "--min-split-size=1M"]
             })
         
-        # Add progress hook for audio
-        def audio_direct_hook(d):
-            # Add file_id to info_dict for our progress_hook
-            if 'info_dict' in d and isinstance(d['info_dict'], dict):
-                d['info_dict']['__download_id'] = file_id
-            progress_hook(d)
-            
-        audio_opts['progress_hooks'] = [audio_direct_hook]
-        
-        # Add download ID for tracking
-        if 'postprocessor_args' not in audio_opts:
-            audio_opts['postprocessor_args'] = {}
-        audio_opts['postprocessor_args']['__download_id'] = file_id
-            
         # Download the audio
         with YoutubeDL(audio_opts) as ydl:
             ydl.download([url])
@@ -544,18 +431,10 @@ def download_with_ffmpeg(url, video_id, itag, file_id):
             '-vn',                       # No video
             '-acodec', 'libmp3lame',     # Use MP3 codec
             '-ab', '192k',               # 192k bitrate
+            '-metadata', f'title={title}',
             output_path
         ]
-        # Run FFmpeg command and capture stderr/stdout as strings
-        try:
-            result = subprocess.run(ffmpeg_cmd, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            if result.returncode != 0:
-                logger.error(f"FFmpeg audio conversion error: {result.stderr}")
-                return jsonify({"error": f"FFmpeg error: {result.stderr}"}), 500
-            logger.info("FFmpeg audio conversion completed successfully")
-        except Exception as e:
-            logger.error(f"FFmpeg audio conversion error: {str(e)}")
-            return jsonify({"error": str(e)}), 500
+        subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
         
         # Verify the output file exists
         if not os.path.exists(output_path):
@@ -621,40 +500,8 @@ def download_with_ffmpeg(url, video_id, itag, file_id):
             "outtmpl": temp_video,
         })
         logger.info(f"Downloading video stream with format {itag}")
-        # Update progress for video download stage
-        download_progress[file_id].update({
-            'stage': 'downloading_video',
-            'progress': 25,
-            'status': 'downloading'
-        })
-        socketio.emit(f'progress_update_{file_id}', download_progress[file_id])
-        
-        # Add progress hook to the options
-        video_opts['progress_hooks'] = [progress_hook]
-        # Add download ID to track this specific file - store as string to avoid dict decode errors
-        if 'postprocessor_args' not in video_opts:
-            video_opts['postprocessor_args'] = {}
-        video_opts['postprocessor_args']['__download_id'] = file_id
-        
-        # Add custom callback for additional progress tracking
-        def ytdlp_hook(d):
-            # Add file_id to info_dict for our progress_hook
-            if 'info_dict' in d and isinstance(d['info_dict'], dict):
-                d['info_dict']['__download_id'] = file_id
-            progress_hook(d)
-        
-        video_opts['progress_hooks'] = [ytdlp_hook]
-        
         with YoutubeDL(video_opts) as ydl:
             ydl.download([url])
-        
-        # Update progress for audio download stage
-        download_progress[file_id].update({
-            'stage': 'downloading_audio',
-            'progress': 50,
-            'status': 'downloading'
-        })
-        socketio.emit(f'progress_update_{file_id}', download_progress[file_id])
         
         # Download audio
         audio_opts = base_opts.copy()
@@ -663,23 +510,6 @@ def download_with_ffmpeg(url, video_id, itag, file_id):
             "outtmpl": temp_audio,
         })
         logger.info("Downloading audio stream")
-        
-        # Use progress hook for audio too
-        audio_opts['progress_hooks'] = [progress_hook]
-        # Add download ID to track this specific file - store as string to avoid dict decode errors
-        if 'postprocessor_args' not in audio_opts:
-            audio_opts['postprocessor_args'] = {}
-        audio_opts['postprocessor_args']['__download_id'] = file_id
-        
-        # Add custom callback for additional progress tracking for audio
-        def audio_ytdlp_hook(d):
-            # Add file_id to info_dict for our progress_hook
-            if 'info_dict' in d and isinstance(d['info_dict'], dict):
-                d['info_dict']['__download_id'] = file_id
-            progress_hook(d)
-        
-        audio_opts['progress_hooks'] = [audio_ytdlp_hook]
-        
         with YoutubeDL(audio_opts) as ydl:
             ydl.download([url])
         
@@ -687,14 +517,6 @@ def download_with_ffmpeg(url, video_id, itag, file_id):
         if not os.path.exists(temp_video) or not os.path.exists(temp_audio):
             logger.error("Video or audio file not downloaded correctly")
             return jsonify({"error": "Failed to download video or audio streams"}), 500
-        
-        # Update progress for FFmpeg merging stage
-        download_progress[file_id].update({
-            'stage': 'merging',
-            'progress': 75,
-            'status': 'processing'
-        })
-        socketio.emit(f'progress_update_{file_id}', download_progress[file_id])
         
         # Merge with FFmpeg (optimized parameters)
         logger.info("Merging video and audio with FFmpeg")
@@ -709,26 +531,10 @@ def download_with_ffmpeg(url, video_id, itag, file_id):
             '-c:a', 'aac',                        # Use AAC for audio (widely compatible)
             '-b:a', '192k',                       # Good quality audio bitrate
             '-movflags', '+faststart',            # Optimize for web streaming
+            '-metadata', f'title={title}',        # Add title metadata
             output_path
         ]
-        # Run FFmpeg command and capture stderr/stdout as strings
-        try:
-            result = subprocess.run(ffmpeg_cmd, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            if result.returncode != 0:
-                logger.error(f"FFmpeg error: {result.stderr}")
-                return jsonify({"error": f"FFmpeg error: {result.stderr}"}), 500
-            logger.info("FFmpeg merging completed successfully")
-        except Exception as e:
-            logger.error(f"FFmpeg error: {str(e)}")
-            return jsonify({"error": f"FFmpeg error: {str(e)}"}), 500
-            
-        # Update progress for completion
-        download_progress[file_id].update({
-            'stage': 'completed',
-            'progress': 100,
-            'status': 'completed'
-        })
-        socketio.emit(f'progress_update_{file_id}', download_progress[file_id])
+        subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
         
         # Check if merged file exists
         if not os.path.exists(output_path):
@@ -769,206 +575,32 @@ def download_with_ffmpeg(url, video_id, itag, file_id):
 
 @app.route("/")
 def hello():
-    # Load the simplified template file and replace placeholders
-    ffmpeg_status = "available" if FFMPEG_AVAILABLE else "not available"
-    aria2c_status = "available" if ARIA2C_AVAILABLE else "not available"
-    
-    try:
-        with open("simplified-template.html", "r") as f:
-            html = f.read()
-        
-        # Replace placeholders
-        html = html.replace("{ffmpeg_js_available}", "true" if FFMPEG_AVAILABLE else "false")
-        logger.info("Using simplified template HTML")
-    except Exception as e:
-        logger.error(f"Error loading template: {e}")
-        # Fallback to string-based HTML if template file is not found
-        html = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>YouTube Video Downloader</title>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <style>
-                body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-                h1 { color: #ff0000; }
-                input, button { padding: 10px; margin: 5px 0; }
-                input { width: 70%; }
-                button { background: #ff0000; color: white; border: none; cursor: pointer; }
-                .download-btn { display: inline-block; padding: 10px; background: #065fd4; color: white; 
-                               text-decoration: none; margin: 5px; border-radius: 4px; }
-                .download-btn.audio { background: #ff0000; }
-            </style>
-        </head>
-        <body>
-            <h1>YouTube Video Downloader</h1>
-            <p>Enter a YouTube URL below:</p>
-            <div>
-                <input type="text" id="videoInput" placeholder="https://www.youtube.com/watch?v=...">
-                <button id="fetchBtn">Fetch</button>
-            </div>
-            <div>
-                <label>
-                    <input type="checkbox" id="useFFmpeg" """ + ("checked" if FFMPEG_AVAILABLE else "disabled") + """>
-                    Use FFmpeg for better quality """ + ("" if FFMPEG_AVAILABLE else "(Not available)") + """
-                </label>
-            </div>
-            <div id="resultDiv"></div>
-            
-            <script>
-                document.getElementById('fetchBtn').addEventListener('click', async () => {
-                    const input = document.getElementById('videoInput').value.trim();
-                    const resultDiv = document.getElementById('resultDiv');
-                    
-                    if (!input) {
-                        resultDiv.innerHTML = '<p style="color:red">Please enter a YouTube URL</p>';
-                        return;
-                    }
-                    
-                    resultDiv.innerHTML = '<p>Loading...</p>';
-                    
-                    try {
-                        let videoId = input;
-                        if (input.includes('watch?v=')) {
-                            const match = input.match(/[?&]v=([^&#]*)/);
-                            if (match && match[1]) videoId = match[1];
-                        } else if (input.includes('youtu.be/')) {
-                            const match = input.match(/youtu\\.be\\/([^?&#]*)/);
-                            if (match && match[1]) videoId = match[1];
-                        }
-                        
-                        const response = await fetch(`/api/info?videoId=${encodeURIComponent(videoId)}`);
-                        const data = await response.json();
-                        
-                        if (data.error) {
-                            resultDiv.innerHTML = `<p style="color:red">Error: ${data.error}</p>`;
-                            return;
-                        }
-                        
-                        const useFFmpeg = document.getElementById('useFFmpeg').checked;
-                        
-                        let buttonsHtml = '';
-                        if (data.formats && data.formats.length > 0) {
-                            data.formats.forEach(format => {
-                                const isAudioOnly = format.qualityLabel.includes('Audio Only');
-                                const buttonClass = isAudioOnly ? 'download-btn audio' : 'download-btn';
-                                
-                                let formatLabel = format.qualityLabel;
-                                if (formatLabel.includes('(MP3)')) formatLabel = 'Audio Only (MP3)';
-                                else if (formatLabel.includes('(AAC)')) formatLabel = 'Audio Only (AAC)';
-                                
-                                buttonsHtml += `
-                                    <a class="${buttonClass}" 
-                                       href="/api/download?videoId=${encodeURIComponent(videoId)}&itag=${format.itag}&use_ffmpeg=${useFFmpeg}"
-                                       target="_blank">${formatLabel}</a>
-                                `;
-                            });
-                        }
-                        
-                        resultDiv.innerHTML = `
-                            <div style="margin-top:20px">
-                                <div style="display:flex;margin-bottom:20px;background:white;border-radius:5px;overflow:hidden;box-shadow:0 0 10px rgba(0,0,0,0.1)">
-                                    <img src="${data.thumbnail}" alt="${data.title}" style="width:240px;height:auto;object-fit:cover">
-                                    <div style="padding:15px">
-                                        <h2 style="margin-top:0">${data.title || 'Unknown Title'}</h2>
-                                        <p>Channel: ${data.channel || 'Unknown Channel'}</p>
-                                    </div>
-                                </div>
-                                <div>
-                                    <h3>Available Download Options</h3>
-                                    <div>
-                                        ${buttonsHtml || '<p>No formats available</p>'}
-                                    </div>
-                                </div>
-                            </div>
-                        `;
-                    } catch (error) {
-                        resultDiv.innerHTML = `<p style="color:red">Error: ${error.message}</p>`;
-                    }
-                });
-                
-                document.getElementById('videoInput').addEventListener('paste', (e) => {
-                    setTimeout(() => {
-                        const input = document.getElementById('videoInput').value.trim();
-                        if (input && (input.includes('youtube.com') || input.includes('youtu.be'))) {
-                            document.getElementById('fetchBtn').click();
-                        }
-                    }, 100);
-                });
-                
-                document.getElementById('videoInput').addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') {
-                        document.getElementById('fetchBtn').click();
-                    }
-                });
-            </script>
-        </body>
-        </html>
-        """
-    
-    return html
-
-# Keep the old HTML as a backup
-def hello_old():
     # Modern static HTML with improved UI
     ffmpeg_status = "available" if FFMPEG_AVAILABLE else "not available"
     aria2c_status = "available" if ARIA2C_AVAILABLE else "not available"
-    html = """
+    html = f"""
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>YouTube Video Downloader</title>
-        <!-- Using Material Symbols from Google instead of Font Awesome -->
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0">
-        <script src="https://cdn.socket.io/4.6.2/socket.io.min.js"></script>
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
         <style>
-            /* YouTube inspired colors */
             :root {{
-                --youtube-red: #ff0000;
-                --youtube-red-hover: #cc0000;
-                --youtube-blue: #065fd4;
-                --youtube-blue-hover: #0547a5;
-                --youtube-dark: #212121;
-                --youtube-white: #ffffff;
-                --youtube-light-bg: #f9f9f9;
-                --youtube-gray: #909090;
-                --youtube-light-gray: #e5e5e5;
-                
-                /* Theme variables - light mode default */
-                --primary-color: var(--youtube-red);
-                --primary-hover: var(--youtube-red-hover);
-                --secondary-color: var(--youtube-blue);
-                --secondary-hover: var(--youtube-blue-hover);
-                --text-dark: var(--youtube-dark);
-                --text-light: var(--youtube-gray);
-                --bg-light: var(--youtube-light-bg);
-                --bg-white: var(--youtube-white);
-                --bg-card: var(--youtube-white);
-                --shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+                --primary-color: #ff4b4b;
+                --primary-hover: #e63e3e;
+                --secondary-color: #4285f4;
+                --secondary-hover: #3367d6;
+                --text-dark: #2d3748;
+                --text-light: #718096;
+                --bg-light: #f8fafc;
+                --bg-white: #ffffff;
+                --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
                 --border-radius: 8px;
-                --border-color: var(--youtube-light-gray);
-                --success-color: #4caf50;
-                --error-color: var(--youtube-red);
-                
-                /* Animation speeds */
-                --transition-speed: 0.3s;
-            }}
-            
-            /* Dark mode styles */
-            .dark-mode {{
-                --primary-color: var(--youtube-red);
-                --primary-hover: var(--youtube-red-hover);
-                --secondary-color: var(--youtube-blue);
-                --secondary-hover: var(--youtube-blue-hover);
-                --text-dark: var(--youtube-white);
-                --text-light: #aaaaaa;
-                --bg-light: #181818;
-                --bg-white: #212121;
-                --bg-card: #303030;
-                --border-color: #383838;
+                --border-color: #e2e8f0;
+                --success-color: #48bb78;
+                --error-color: #f56565;
             }}
             
             * {{
@@ -984,32 +616,6 @@ def hello_old():
                 padding: 40px 20px;
                 max-width: 800px;
                 color: var(--text-dark);
-                transition: background-color var(--transition-speed), color var(--transition-speed);
-                position: relative;
-            }}
-            
-            /* Theme toggle */
-            .theme-switch {{
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                background-color: var(--bg-card);
-                color: var(--text-dark);
-                width: 40px;
-                height: 40px;
-                border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                cursor: pointer;
-                box-shadow: var(--shadow);
-                z-index: 1000;
-                transition: all var(--transition-speed);
-            }}
-            
-            .theme-switch:hover {{
-                transform: rotate(30deg);
-                box-shadow: 0 0 15px rgba(0,0,0,0.2);
             }}
             
             .container {{
@@ -1020,31 +626,10 @@ def hello_old():
             }}
             
             .header {{
-                background: linear-gradient(135deg, var(--primary-color), #ff7676);
+                background: linear-gradient(to right, var(--primary-color), #ff7676);
                 color: white;
                 padding: 30px 20px;
                 text-align: center;
-                position: relative;
-                overflow: hidden;
-            }}
-            
-            /* Animated background effect */
-            .header::before {{
-                content: '';
-                position: absolute;
-                top: -50%;
-                left: -50%;
-                width: 200%;
-                height: 200%;
-                background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 70%);
-                animation: pulse 8s infinite ease-in-out;
-                z-index: 1;
-            }}
-            
-            @keyframes pulse {{
-                0% {{ transform: scale(1); opacity: 0.5; }}
-                50% {{ transform: scale(1.2); opacity: 0.2; }}
-                100% {{ transform: scale(1); opacity: 0.5; }}
             }}
             
             .header h1 {{
@@ -1367,41 +952,12 @@ def hello_old():
                 text-decoration: none;
                 border-radius: var(--border-radius);
                 font-weight: 500;
-                transition: all var(--transition-speed);
-                border: 1px solid transparent;
-                position: relative;
-                overflow: hidden;
-            }}
-            
-            /* Button ripple effect */
-            .download-btn::after {{
-                content: '';
-                position: absolute;
-                top: 50%;
-                left: 50%;
-                width: 5px;
-                height: 5px;
-                background: rgba(255, 255, 255, 0.5);
-                opacity: 0;
-                border-radius: 100%;
-                transform: scale(1, 1) translate(-50%);
-                transform-origin: 50% 50%;
-            }}
-            
-            .download-btn:focus:not(:active)::after {{
-                animation: ripple 1s ease-out;
-            }}
-            
-            @keyframes ripple {{
-                0% {{ transform: scale(0, 0); opacity: 0.5; }}
-                20% {{ transform: scale(25, 25); opacity: 0.3; }}
-                100% {{ opacity: 0; transform: scale(40, 40); }}
+                transition: all 0.2s;
             }}
             
             .download-btn:hover {{
                 background-color: var(--secondary-hover);
                 transform: translateY(-2px);
-                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
             }}
             
             .download-btn i {{
@@ -1457,9 +1013,6 @@ def hello_old():
         </style>
     </head>
     <body>
-        <div class="theme-switch" id="theme-toggle">
-            <i class="fas fa-moon"></i>
-        </div>
         <div class="container">
             <div class="header">
                 <h1><i class="fas fa-download"></i> YouTube Video Downloader</h1>
@@ -1534,40 +1087,13 @@ def hello_old():
         </footer>
         
         <script>
-        // Theme toggle functionality
-        const themeToggle = document.getElementById('theme-toggle');
-        const body = document.body;
-        
-        // Check if dark mode is enabled in localStorage
-        const isDarkMode = localStorage.getItem('darkMode') === 'true';
-        
-        // Apply dark mode if it was previously enabled
-        if (isDarkMode) {
-            body.classList.add('dark-mode');
-            themeToggle.innerHTML = '<i class="fas fa-sun"></i>';
-        }
-        
-        // Toggle dark mode when the button is clicked
-        themeToggle.addEventListener('click', function() {
-            body.classList.toggle('dark-mode');
-            
-            // Update localStorage with the current theme preference
-            const isDark = body.classList.contains('dark-mode');
-            localStorage.setItem('darkMode', isDark);
-            
-            // Change the icon based on the current theme
-            themeToggle.innerHTML = isDark ? 
-              '<i class="fas fa-sun"></i>' : 
-              '<i class="fas fa-moon"></i>';
-        });
-            
-        document.getElementById('fetchBtn').addEventListener('click', async () => {
+        document.getElementById('fetchBtn').addEventListener('click', async () => {{
             const input = document.getElementById('videoInput').value.trim();
             const resultDiv = document.getElementById('result');
             const loader = document.querySelector('.loader');
             const infoMessage = document.querySelector('.info-message');
             
-            if (!input) {
+            if (!input) {{
                 resultDiv.innerHTML = `
                     <div class="error-msg">
                         <i class="fas fa-exclamation-circle"></i>
@@ -1578,7 +1104,7 @@ def hello_old():
                     </div>
                 `;
                 return;
-            }
+            }}
             
             // Show loader, hide info message
             if (loader) loader.style.display = 'flex';
@@ -1592,41 +1118,41 @@ def hello_old():
                 </div>
             `;
             
-            try {
+            try {{
                 // Extract video ID
                 let videoId = input;
-                if (input.includes('watch?v=')) {
+                if (input.includes('watch?v=')) {{
                     const match = input.match(/[?&]v=([^&#]*)/);
-                    if (match && match[1]) {
+                    if (match && match[1]) {{
                         videoId = match[1];
-                    }
-                } else if (input.includes('youtu.be/')) {
+                    }}
+                }} else if (input.includes('youtu.be/')) {{
                     const match = input.match(/youtu\\.be\\/([^?&#]*)/);
-                    if (match && match[1]) {
+                    if (match && match[1]) {{
                         videoId = match[1];
-                    }
-                }
+                    }}
+                }}
                 
-                const response = await fetch(`/api/info?videoId=${encodeURIComponent(videoId)}`);
+                const response = await fetch(`/api/info?videoId=${{encodeURIComponent(videoId)}}`);
                 const data = await response.json();
                 
-                if (data.error) {
+                if (data.error) {{
                     resultDiv.innerHTML = `
                         <div class="error-msg">
                             <i class="fas fa-exclamation-circle"></i>
-                            <span>Error: ${data.error}</span>
+                            <span>Error: ${{data.error}}</span>
                         </div>
                     `;
                     return;
-                }
+                }}
                 
                 // Get FFmpeg setting
                 const useFFmpeg = document.getElementById('useFFmpeg').checked;
                 
                 // Create download buttons
                 let buttonsHtml = '';
-                if (data.formats && data.formats.length > 0) {
-                    data.formats.forEach(format => {
+                if (data.formats && data.formats.length > 0) {{
+                    data.formats.forEach(format => {{
                         // Determine if this is an audio format
                         const isAudioOnly = format.qualityLabel.includes('Audio Only');
                         const buttonClass = isAudioOnly ? 'download-btn audio' : 'download-btn';
@@ -1634,30 +1160,30 @@ def hello_old():
                         
                         // Clean up format label for audio
                         let formatLabel = format.qualityLabel;
-                        if (formatLabel.includes('(MP3)')) {
+                        if (formatLabel.includes('(MP3)')) {{
                             formatLabel = 'Audio Only (MP3)';
-                        } else if (formatLabel.includes('(AAC)')) {
+                        }} else if (formatLabel.includes('(AAC)')) {{
                             formatLabel = 'Audio Only (AAC)';
-                        }
+                        }}
                         
                         buttonsHtml += `
-                            <a class="${buttonClass}" 
-                               href="/api/download?videoId=${encodeURIComponent(videoId)}&itag=${format.itag}&use_ffmpeg=${useFFmpeg}"
+                            <a class="${{buttonClass}}" 
+                               href="/api/download?videoId=${{encodeURIComponent(videoId)}}&itag=${{format.itag}}&use_ffmpeg=${{useFFmpeg}}"
                                target="_blank">
-                               <i class="fas ${icon}"></i> ${formatLabel}
+                               <i class="fas ${{icon}}"></i> ${{formatLabel}}
                             </a>
                         `;
-                    });
-                }
+                    }});
+                }}
                 
                 // Display video info
                 resultDiv.innerHTML = `
                     <div class="video-info">
                         <div class="video-details">
-                            <img src="${data.thumbnail}" class="video-thumbnail" alt="${data.title}">
+                            <img src="${{data.thumbnail}}" class="video-thumbnail" alt="${{data.title}}">
                             <div class="video-text">
-                                <h2>${data.title || 'Unknown Title'}</h2>
-                                <p><i class="fas fa-user"></i> ${data.channel || 'Unknown Channel'}</p>
+                                <h2>${{data.title || 'Unknown Title'}}</h2>
+                                <p><i class="fas fa-user"></i> ${{data.channel || 'Unknown Channel'}}</p>
                                 <p><i class="fas fa-info-circle"></i> Select your preferred format below</p>
                             </div>
                         </div>
@@ -1665,80 +1191,52 @@ def hello_old():
                         <div class="download-section">
                             <h3><i class="fas fa-download"></i> Available Download Options</h3>
                             <div class="download-grid">
-                                ${buttonsHtml || '<p>No formats available</p>'}
+                                ${{buttonsHtml || '<p>No formats available</p>'}}
                             </div>
                         </div>
                     </div>
                 `;
-            } catch (error) {
+            }} catch (error) {{
                 resultDiv.innerHTML = `
                     <div class="error-msg">
                         <i class="fas fa-exclamation-circle"></i>
-                        <span>Error: ${error.message}</span>
+                        <span>Error: ${{error.message}}</span>
                     </div>
                 `;
-            }
-        });
+            }}
+        }});
         
         // Auto-fetch on paste
-        document.getElementById('videoInput').addEventListener('paste', (e) => {
+        document.getElementById('videoInput').addEventListener('paste', (e) => {{
             // Short delay to let the paste complete
-            setTimeout(() => {
+            setTimeout(() => {{
                 const input = document.getElementById('videoInput').value.trim();
-                if (input && (input.includes('youtube.com') || input.includes('youtu.be'))) {
+                if (input && (input.includes('youtube.com') || input.includes('youtu.be'))) {{
                     document.getElementById('fetchBtn').click();
-                }
-            }, 100);
-        });
+                }}
+            }}, 100);
+        }});
         
         // Enter key event listener
-        document.getElementById('videoInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
+        document.getElementById('videoInput').addEventListener('keypress', (e) => {{
+            if (e.key === 'Enter') {{
                 document.getElementById('fetchBtn').click();
-            }
-        });
+            }}
+        }});
         
         // Disable FFmpeg toggle if not available
-        const ffmpegAvailable = """ + ("true" if FFMPEG_AVAILABLE else "false") + """;
-        if (!ffmpegAvailable) {
+        const ffmpegAvailable = {str(FFMPEG_AVAILABLE).lower()};
+        if (!ffmpegAvailable) {{
             document.getElementById('useFFmpeg').disabled = true;
             document.querySelector('.toggle-label').innerHTML += ' <span style="color: var(--error-color); font-size: 12px;">(Not available)</span>';
-        }
+        }}
         </script>
     </body>
     </html>
     """
     return html
 
-# Add a route to get progress information for a specific download
-@app.route("/api/progress/<file_id>")
-def get_progress(file_id):
-    if file_id in download_progress:
-        return jsonify(download_progress[file_id])
-    else:
-        return jsonify({"error": "Download not found"}), 404
-
-# SocketIO event for client connections
-@socketio.on('connect')
-def handle_connect():
-    logger.info(f"Client connected: {request.sid}")
-
-# SocketIO event for client disconnections
-@socketio.on('disconnect')
-def handle_disconnect():
-    logger.info(f"Client disconnected: {request.sid}")
-
-# SocketIO event for subscribing to progress updates
-@socketio.on('subscribe')
-def handle_subscribe(data):
-    file_id = data.get('file_id')
-    if file_id:
-        logger.info(f"Client {request.sid} subscribed to progress updates for {file_id}")
-        if file_id in download_progress:
-            # Send initial progress data
-            socketio.emit(f'progress_update_{file_id}', download_progress[file_id], to=request.sid)
-
 if __name__ == "__main__":
     port = 5000
     print(f"YouTube Downloader API Server running on port {port}")
-    socketio.run(app, host="0.0.0.0", port=port, allow_unsafe_werkzeug=True)
+    app.run(host="0.0.0.0", port=port)

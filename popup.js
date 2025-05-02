@@ -1,34 +1,6 @@
 document.addEventListener('DOMContentLoaded', function() {
   console.log('Popup script loaded');
   
-  // Theme toggle functionality
-  const themeToggle = document.getElementById('theme-toggle');
-  const body = document.body;
-  const container = document.querySelector('.container');
-  
-  // Check if dark mode is enabled in localStorage
-  const isDarkMode = localStorage.getItem('darkMode') === 'true';
-  
-  // Apply dark mode if it was previously enabled
-  if (isDarkMode) {
-    body.classList.add('dark-mode');
-    themeToggle.innerHTML = '<i class="fas fa-sun"></i>';
-  }
-  
-  // Toggle dark mode when the button is clicked
-  themeToggle.addEventListener('click', function() {
-    body.classList.toggle('dark-mode');
-    
-    // Update localStorage with the current theme preference
-    const isDark = body.classList.contains('dark-mode');
-    localStorage.setItem('darkMode', isDark);
-    
-    // Change the icon based on the current theme
-    themeToggle.innerHTML = isDark ? 
-      '<i class="fas fa-sun"></i>' : 
-      '<i class="fas fa-moon"></i>';
-  });
-  
   // Elements
   const videoUrlInput = document.getElementById('video-url');
   const fetchBtn = document.getElementById('fetch-btn');
@@ -36,7 +8,6 @@ document.addEventListener('DOMContentLoaded', function() {
   const loader = document.getElementById('loader');
   const errorContainer = document.getElementById('error-container');
   const errorMessage = document.getElementById('error-message');
-  const infoMessage = document.getElementById('info-message');
   const videoInfo = document.getElementById('video-info');
   const videoTitle = document.getElementById('video-title');
   const videoChannel = document.getElementById('video-channel');
@@ -68,7 +39,6 @@ document.addEventListener('DOMContentLoaded', function() {
     resolutionButtons.innerHTML = '';
     toggleElement(videoInfo, false);
     toggleElement(errorContainer, false);
-    toggleElement(infoMessage, true);
   }
   
   // Function to show error message
@@ -76,7 +46,6 @@ document.addEventListener('DOMContentLoaded', function() {
     errorMessage.textContent = message;
     toggleElement(errorContainer, true);
     toggleElement(loader, false);
-    toggleElement(infoMessage, false);
     currentlyFetchingUrl = ''; // Reset fetching state
   }
   
@@ -112,7 +81,6 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('fetchVideoInfo called with URL:', url);
     clearPreviousData();
     toggleElement(loader, true);
-    toggleElement(infoMessage, false);
     currentlyFetchingUrl = url;
     
     if (!isValidYouTubeUrl(url)) {

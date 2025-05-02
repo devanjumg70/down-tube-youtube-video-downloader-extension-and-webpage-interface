@@ -8,5 +8,4 @@ dependencies = [
     "flask>=3.1.0",
     "yt-dlp>=2025.4.30",
     "trafilatura>=2.0.0",
-    "flask-socketio>=5.5.1",
 ]
