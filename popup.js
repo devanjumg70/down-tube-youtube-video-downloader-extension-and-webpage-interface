@@ -37,6 +37,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const videoUrlInput = document.getElementById('video-url');
   const fetchBtn = document.getElementById('fetch-btn');
   const useFFmpegCheckbox = document.getElementById('use-ffmpeg');
+  const batchDownloadToggle = document.getElementById('batch-download-toggle');
   const loader = document.getElementById('loader');
   const errorContainer = document.getElementById('error-container');
   const errorMessage = document.getElementById('error-message');
@@ -46,6 +47,20 @@ document.addEventListener('DOMContentLoaded', function() {
   const videoChannel = document.getElementById('video-channel');
   const videoThumbnail = document.getElementById('video-thumbnail');
   const resolutionButtons = document.getElementById('resolution-buttons');
+  
+  // Playlist elements
+  const playlistInfo = document.getElementById('playlist-info');
+  const playlistTitle = document.getElementById('playlist-title');
+  const playlistThumbnail = document.getElementById('playlist-thumbnail');
+  const playlistChannel = document.getElementById('playlist-channel');
+  const playlistVideoCount = document.getElementById('playlist-video-count');
+  const batchFormatSelect = document.getElementById('batch-format');
+  const startBatchBtn = document.getElementById('start-batch-btn');
+  const batchProgress = document.getElementById('batch-progress');
+  const batchProgressBar = document.getElementById('batch-progress-bar');
+  const batchStatus = document.getElementById('batch-status');
+  const completedCount = document.getElementById('completed-count');
+  const totalCount = document.getElementById('total-count');
   
   // Variables for debounce
   let fetchTimeout = null;
@@ -71,8 +86,10 @@ document.addEventListener('DOMContentLoaded', function() {
     videoThumbnail.src = '';
     resolutionButtons.innerHTML = '';
     toggleElement(videoInfo, false);
+    toggleElement(playlistInfo, false);
     toggleElement(errorContainer, false);
     toggleElement(infoMessage, true); // Show info message when resetting
+    toggleElement(batchProgress, false); // Hide batch progress
   }
   
   // Function to show error message

@@ -39,6 +39,14 @@
         
         <div class="options-row mt-2">
           <label class="toggle-switch">
+            <input type="checkbox" id="batch-download-toggle">
+            <span class="toggle-slider"></span>
+            <span class="toggle-label"><i class="fas fa-list-ul"></i> Playlist Download</span>
+          </label>
+        </div>
+        
+        <div class="options-row mt-2">
+          <label class="toggle-switch">
             <input type="checkbox" id="theme-toggle">
             <span class="toggle-slider"></span>
             <span class="toggle-label"><i class="fas fa-moon"></i> Dark Mode</span>
@@ -79,6 +87,53 @@
           <h3><i class="fas fa-download"></i> Available Formats</h3>
           <div id="resolution-buttons">
             <!-- Resolution buttons will be added here dynamically -->
+          </div>
+        </div>
+      </div>
+      
+      <!-- Playlist info section -->
+      <div id="playlist-info" class="hidden">
+        <div class="video-details-card">
+          <div class="thumbnail-container">
+            <img id="playlist-thumbnail" src="" alt="Playlist thumbnail">
+          </div>
+          <div class="video-info-container">
+            <h2 id="playlist-title"></h2>
+            <p class="playlist-stats">
+              <i class="fas fa-list-ol"></i> <span id="playlist-video-count"></span> videos
+            </p>
+            <p class="channel-info"><i class="fas fa-user"></i> <span id="playlist-channel"></span></p>
+          </div>
+        </div>
+        
+        <div class="download-options">
+          <h3><i class="fas fa-cog"></i> Playlist Download Options</h3>
+          
+          <div class="playlist-options">
+            <div class="format-selector">
+              <label for="batch-format">Format:</label>
+              <select id="batch-format">
+                <option value="best">Best Quality (Video + Audio)</option>
+                <option value="1080">1080p (HD)</option>
+                <option value="720">720p (HD)</option>
+                <option value="480">480p</option>
+                <option value="360">360p</option>
+                <option value="audio">Audio Only (MP3)</option>
+              </select>
+            </div>
+            
+            <button id="start-batch-btn" class="primary-btn">
+              <i class="fas fa-download"></i> Download All Videos
+            </button>
+          </div>
+          
+          <div id="batch-progress" class="hidden">
+            <h4><i class="fas fa-tasks"></i> Download Progress</h4>
+            <div class="progress-bar-container">
+              <div id="batch-progress-bar" class="progress-bar"></div>
+            </div>
+            <p id="batch-status">Starting batch download...</p>
+            <p id="batch-count"><span id="completed-count">0</span>/<span id="total-count">0</span> videos completed</p>
           </div>
         </div>
       </div>
