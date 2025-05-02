@@ -638,19 +638,18 @@ def download_with_ffmpeg(url, video_id, itag, file_id, is_batch=False):
         logger.error(f"Error in FFmpeg workflow: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/playlist-info")
+@app.route("/api/playlist")
 def get_playlist_info():
     """Get information about a YouTube playlist"""
-    playlist_url = request.args.get("playlistUrl")
-    
-    if not playlist_url:
-        return jsonify({"error": "Missing playlist URL"}), 400
-    
-    # Extract playlist ID
-    playlist_id = extract_playlist_id(playlist_url)
+    playlist_id = request.args.get("playlistId")
     
     if not playlist_id:
-        return jsonify({"error": "Invalid playlist URL or ID"}), 400
+        return jsonify({"error": "Missing playlist ID"}), 400
+    
+    # For URL inputs, extract the playlist ID
+    extracted_id = extract_playlist_id(playlist_id)
+    if extracted_id:
+        playlist_id = extracted_id
     
     # Use full playlist URL
     url = f"https://www.youtube.com/playlist?list={playlist_id}"
