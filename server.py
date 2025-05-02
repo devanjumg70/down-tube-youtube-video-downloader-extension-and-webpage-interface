@@ -646,10 +646,11 @@ def get_playlist_info():
     if not playlist_id:
         return jsonify({"error": "Missing playlist ID"}), 400
     
-    # For URL inputs, extract the playlist ID
-    extracted_id = extract_playlist_id(playlist_id)
-    if extracted_id:
-        playlist_id = extracted_id
+    # Handle both direct IDs and URLs
+    if "/" in playlist_id or "youtu" in playlist_id:
+        extracted_id = extract_playlist_id(playlist_id)
+        if extracted_id:
+            playlist_id = extracted_id
     
     # Use full playlist URL
     url = f"https://www.youtube.com/playlist?list={playlist_id}"
