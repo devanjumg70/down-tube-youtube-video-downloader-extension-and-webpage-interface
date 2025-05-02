@@ -1,12 +1,13 @@
 # YouTube Video Downloader - Quick Guide
 
 ## What is it?
-A Chrome extension that lets you download YouTube videos in various qualities.
+A Chrome extension that lets you download YouTube videos and entire playlists in various qualities.
 
 ## What you need:
 1. Google Chrome browser
 2. Python installed on your computer
 3. The extension files from this package
+4. FFmpeg (optional but recommended for better quality)
 
 ## Setup in 60 seconds:
 

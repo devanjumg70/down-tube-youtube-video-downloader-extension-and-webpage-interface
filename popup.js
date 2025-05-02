@@ -108,12 +108,114 @@ document.addEventListener('DOMContentLoaded', function() {
     return youtubeRegex.test(url);
   }
   
+  // Function to validate YouTube playlist URL
+  function isYouTubePlaylistUrl(url) {
+    if (!url) return false;
+    const playlistRegex = /^(https?:\/\/)?(www\.)?youtube\.com\/(playlist\?list=|watch\?v=[\w-]+&list=)(PL|UU|LL|FL|RD|UL|TL|PU|OLAK)[\w-]+/;
+    return playlistRegex.test(url);
+  }
+  
   // Function to extract video ID from YouTube URL
   function extractVideoId(url) {
     if (!url) return false;
     const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
     const match = url.match(regExp);
     return (match && match[7].length === 11) ? match[7] : false;
+  }
+  
+  // Function to extract playlist ID from YouTube URL
+  function extractPlaylistId(url) {
+    if (!url) return false;
+    const regExp = /[&?]list=([a-zA-Z0-9_-]+)/;
+    const match = url.match(regExp);
+    return match ? match[1] : false;
+  }
+  
+  // Function to fetch playlist information
+  async function fetchPlaylistInfo(url, playlistId) {
+    console.log('Fetching playlist info for ID:', playlistId);
+    clearPreviousData();
+    toggleElement(loader, true);
+    currentlyFetchingUrl = url;
+    
+    try {
+      // Send message to background script to fetch playlist info
+      chrome.runtime.sendMessage(
+        { action: 'fetchPlaylistInfo', playlistId: playlistId },
+        function(response) {
+          console.log('Received playlist response:', response);
+          toggleElement(loader, false);
+          currentlyFetchingUrl = '';
+          
+          if (response && response.error) {
+            console.error('Error in playlist response:', response.error);
+            showError(response.error);
+            return;
+          }
+          
+          if (!response) {
+            console.error('No playlist response received');
+            showError('Failed to get playlist information. Please try again later.');
+            return;
+          }
+          
+          // Display playlist information
+          playlistTitle.textContent = response.title;
+          playlistChannel.textContent = `By: ${response.channel}`;
+          playlistThumbnail.src = response.thumbnail;
+          playlistVideoCount.textContent = response.videoCount;
+          
+          // Store playlist ID for download
+          startBatchBtn.dataset.playlistId = playlistId;
+          
+          // Hide info message and show playlist info
+          toggleElement(infoMessage, false);
+          toggleElement(playlistInfo, true);
+        }
+      );
+    } catch (error) {
+      showError(`Error fetching playlist information: ${error.message}`);
+    }
+  }
+  
+  // Function to monitor batch download progress
+  function monitorBatchProgress(jobId) {
+    console.log('Monitoring batch job:', jobId);
+    
+    // Set up progress monitoring interval
+    const progressInterval = setInterval(() => {
+      chrome.runtime.sendMessage(
+        { action: 'checkBatchStatus', jobId: jobId },
+        function(response) {
+          console.log('Batch status update:', response);
+          
+          if (!response || response.error) {
+            clearInterval(progressInterval);
+            batchStatus.textContent = 'Error checking progress. Please try again.';
+            return;
+          }
+          
+          // Update progress UI
+          completedCount.textContent = response.completed;
+          totalCount.textContent = response.total;
+          
+          // Calculate percentage
+          const percent = Math.round((response.completed / response.total) * 100);
+          batchProgressBar.style.width = `${percent}%`;
+          
+          // Update status text
+          if (response.status === 'completed') {
+            batchStatus.textContent = 'Download complete!';
+            clearInterval(progressInterval);
+          } else if (response.status === 'failed') {
+            batchStatus.textContent = 'Download failed. Please try again.';
+            clearInterval(progressInterval);
+          } else {
+            batchStatus.textContent = `Downloading videos (${percent}%)...`;
+          }
+        }
+      );
+    }, 2000); // Check every 2 seconds
   }
   
   // Function to fetch video information
@@ -134,6 +236,14 @@ document.addEventListener('DOMContentLoaded', function() {
     clearPreviousData();
     toggleElement(loader, true);
     currentlyFetchingUrl = url;
+    
+    // Check if it's a playlist URL and the batch download toggle is on
+    const playlistId = extractPlaylistId(url);
+    if (playlistId && batchDownloadToggle.checked) {
+      console.log('Playlist detected, fetching playlist info:', playlistId);
+      fetchPlaylistInfo(url, playlistId);
+      return;
+    }
     
     if (!isValidYouTubeUrl(url)) {
       console.log('Invalid YouTube URL:', url);
@@ -283,13 +393,71 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
   
+  // Batch download toggle event listener
+  batchDownloadToggle.addEventListener('change', function() {
+    const url = videoUrlInput.value.trim();
+    if (url) {
+      // Re-fetch with the new batch mode setting
+      fetchVideoInfo(url, true);
+    }
+  });
+  
+  // Batch download start button event listener
+  startBatchBtn.addEventListener('click', function() {
+    const playlistId = this.dataset.playlistId;
+    if (!playlistId) {
+      showError('No playlist ID found');
+      return;
+    }
+    
+    // Get selected format
+    const formatValue = batchFormatSelect.value;
+    const useFFmpeg = useFFmpegCheckbox.checked;
+    
+    // Show progress UI
+    toggleElement(batchProgress, true);
+    batchStatus.textContent = 'Starting batch download...';
+    batchProgressBar.style.width = '0%';
+    completedCount.textContent = '0';
+    
+    // Start the batch download
+    chrome.runtime.sendMessage(
+      { 
+        action: 'startBatchDownload', 
+        playlistId: playlistId,
+        format: formatValue,
+        useFFmpeg: useFFmpeg
+      },
+      function(response) {
+        console.log('Batch download response:', response);
+        
+        if (response && response.error) {
+          showError(response.error);
+          toggleElement(batchProgress, false);
+          return;
+        }
+        
+        if (response && response.jobId) {
+          // Set initial total count
+          totalCount.textContent = response.totalVideos || '?';
+          // Start monitoring progress
+          monitorBatchProgress(response.jobId);
+        } else {
+          showError('Failed to start batch download');
+          toggleElement(batchProgress, false);
+        }
+      }
+    );
+  });
+  
   // Prefill input with URL from current tab if it's YouTube and auto-fetch
   chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
     if (tabs && tabs.length > 0) {
       const currentUrl = tabs[0].url;
       console.log('Current tab URL:', currentUrl);
       
-      if (isValidYouTubeUrl(currentUrl)) {
+      // Check if it's a YouTube URL (video or playlist)
+      if (isValidYouTubeUrl(currentUrl) || isYouTubePlaylistUrl(currentUrl)) {
         videoUrlInput.value = currentUrl;
         // Auto-fetch immediately for YouTube page
         fetchVideoInfo(currentUrl);
@@ -297,7 +465,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Fallback to clipboard check if not a YouTube tab
         try {
           navigator.clipboard.readText().then(text => {
-            if (isValidYouTubeUrl(text) && !videoUrlInput.value) {
+            if ((isValidYouTubeUrl(text) || isYouTubePlaylistUrl(text)) && !videoUrlInput.value) {
               videoUrlInput.value = text;
               fetchVideoInfo(text);
             }

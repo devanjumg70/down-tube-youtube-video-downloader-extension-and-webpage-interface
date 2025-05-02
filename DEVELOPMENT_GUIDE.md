@@ -19,6 +19,8 @@ The YouTube Video Downloader is a Chrome extension that enables users to:
 - Enter YouTube video URLs
 - View available video formats and resolutions
 - Download videos in their preferred quality
+- Download entire YouTube playlists with batch processing
+- Track download progress for batch operations
 - Handle errors gracefully with fallback mechanisms
 
 The extension adheres to Chrome's Manifest V3 standards and utilizes a server-side approach for video extraction to comply with YouTube's Terms of Service.
@@ -74,6 +76,9 @@ This separation allows for powerful video processing on the server while maintai
 1. **API Endpoints**:
    - `/api/info` - Retrieves video information including available formats
    - `/api/download` - Handles video downloading with specified format
+   - `/api/playlist` - Retrieves playlist information including video count and thumbnails
+   - `/api/batch/download` - Initiates batch download for entire playlists
+   - `/api/batch/status` - Reports progress of an ongoing batch download
    - `/` - Serves a test interface for direct API testing
 
 2. **Video Processing Logic**:
@@ -89,12 +94,17 @@ This separation allows for powerful video processing on the server while maintai
 
 1. **User Interface**:
    - Designed clean popup interface with responsive elements
+   - Created dual-mode interface for both single video and playlist downloads
    - Added loading indicators and error messaging
+   - Implemented batch download progress tracking with visual feedback
+   - Added toggle for switching between single video and playlist mode
 
 2. **Extension Logic**:
    - Implemented communication between popup and background script
-   - Created video URL validation and ID extraction
-   - Added format selection and download mechanism
+   - Created video URL and playlist URL validation and ID extraction
+   - Added format selection and download mechanism for individual videos
+   - Implemented batch download capabilities for entire playlists
+   - Added progress tracking for batch downloads with real-time updates
    - Implemented fallback to oEmbed API when server is unavailable
 
 3. **Testing Interface**:
@@ -209,12 +219,14 @@ print(f"Request headers: {dict(request.headers)}")
 1. **Additional Features**:
    - Support for more video platforms beyond YouTube
    - Advanced video processing options (trimming, merging)
-   - Playlist downloading capabilities
+   - Custom video range selection for partial downloads
+   - Subtitle extraction and embedding options
 
 2. **Performance Enhancements**:
    - Caching frequently accessed video information
-   - Progress indicators for large downloads
-   - Parallel processing for multiple downloads
+   - Enhanced multi-threaded downloading using aria2c
+   - Optimized server-side job management for batch processing
+   - Improved error recovery for interrupted downloads
 
 3. **User Experience**:
    - Enhanced error messaging and recovery options
