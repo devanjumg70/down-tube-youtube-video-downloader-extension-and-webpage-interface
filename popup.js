@@ -432,8 +432,10 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('Batch download response:', response);
 
         if (response && response.error && !response.jobId) {
-          showError(response.error);
-          toggleElement(batchProgress, false);
+          // Show warning but don't block progress if server is processing
+          batchStatus.textContent = 'Processing in background...';
+          // Keep progress visible
+          toggleElement(batchProgress, true);
           return;
         }
 
