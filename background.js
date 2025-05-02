@@ -204,7 +204,7 @@ async function fetchPlaylistInfo(playlistId, sendResponse) {
     sendResponse({
       title: data.title || 'YouTube Playlist',
       channel: data.channel || 'YouTube Channel',
-      thumbnail: data.thumbnail || `https://i.ytimg.com/vi/playlist/default.jpg`,
+      thumbnail: data.thumbnail || (data.videos && data.videos[0] ? `https://i.ytimg.com/vi/${data.videos[0].id}/maxresdefault.jpg` : 'https://i.ytimg.com/vi/playlist/default.jpg'),
       videoCount: data.videoCount || 0,
       videos: data.videos || []
     });
