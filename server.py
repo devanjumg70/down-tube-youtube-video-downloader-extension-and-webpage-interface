@@ -772,7 +772,7 @@ def batch_download():
     # Create a unique job ID for this batch download
     job_id = str(uuid.uuid4())
 
-    logger.info(f"Startingbatch download forplaylist ID: {playlist_id}, format: {format_id}, job ID: {job_id}")
+    logger.info(f"Startingbatch download forplaylist ID: {playlist_id}, format: {format_id}, job ID:{job_id}")
 
     # We'll process this in a background thread to avoid blocking the response
     def get_best_format(video_url, target_resolution=None):
@@ -1571,12 +1571,12 @@ def hello():
 
         <script>
         document.getElementById('fetchBtn').addEventListener('click', async () => {
-            const input = document.getElementById('videoInput').value.trim();
+            const input_value = document.getElementById('videoInput').value.trim();
             const resultDiv = document.getElementById('result');
             const loader = document.querySelector('.loader');
             const infoMessage = document.querySelector('.info-message');
 
-            if (!input) {
+            if (!input_value) {
                 resultDiv.innerHTML = `
                     <div class="error-msg">
                         <i class="fas fa-exclamation-circle"></i>
@@ -1603,14 +1603,14 @@ def hello():
 
             try {
                 // Extract video ID
-                let videoId = input;
-                if (input.includes('watch?v=')) {
-                    const match = input.match(/[?&]v=([^&#]*)/);
+                let videoId = input_value;
+                if (input_value.includes('watch?v=')) {
+                    const match = input_value.match(/[?&]v=([^&#]*)/);
                     if (match && match[1]) {
                         videoId = match[1];
                     }
-                } else if (input.includes('youtu.be/')) {
-                    const match = input.match(/youtu\.be\/([^?&#]*)/);
+                } else if (input_value.includes('youtu.be/')) {
+                    const match = input_value.match(/youtu\.be\/([^?&#]*)/);
                     if (match && match[1]) {
                         videoId = match[1];
                     }
@@ -1694,10 +1694,10 @@ def hello():
 
         // Auto-fetch on paste
         document.getElementById('videoInput').addEventListener('paste', (e) => {
-            // Short delay to let the paste complete
+            // Short delay tolet the paste complete
             setTimeout(() => {
-                const input = document.getElementById('videoInput').value.trim();
-                if (input && (input.includes('youtubecom') || input.includes('youtu.be'))) {
+                const input_value = document.getElementById('videoInput').value.trim();
+                if (input_value && (input_value.includes('youtubecom') || input_value.includes('youtu.be'))) {
                     document.getElementById('fetchBtn').click();
                 }
             }, 100);
