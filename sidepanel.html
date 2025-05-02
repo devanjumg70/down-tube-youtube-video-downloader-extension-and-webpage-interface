@@ -1,0 +1,35 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Video Downloader Side Panel</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h2>Video Downloader</h2>
+    <div id="info-message">Enter a YouTube URL to download</div>
+    <input type="url" id="video-url" placeholder="YouTube URL">
+    <button id="fetch-btn">Fetch Video</button>
+    <div id="loader" class="hidden">Loading...</div>
+    <div id="error-container" class="hidden">
+      <p id="error-message"></p>
+    </div>
+    <div id="video-info" class="hidden">
+      <img id="video-thumbnail" alt="Video thumbnail">
+      <h3 id="video-title"></h3>
+      <p id="video-channel"></p>
+      <div id="resolution-buttons"></div>
+    </div>
+    <div class="options">
+      <label>
+        <input type="checkbox" id="use-ffmpeg"> Use FFmpeg for merging
+      </label>
+      <label>
+        <input type="checkbox" id="batch-download-toggle"> Batch Download
+      </label>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
