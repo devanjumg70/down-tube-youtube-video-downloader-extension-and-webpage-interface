@@ -1,6 +1,38 @@
 document.addEventListener('DOMContentLoaded', function() {
   console.log('Popup script loaded');
   
+  // Theme handling
+  const themeToggle = document.getElementById('theme-toggle');
+  const htmlRoot = document.documentElement;
+  
+  // Function to set theme
+  function setTheme(isDark) {
+    if (isDark) {
+      htmlRoot.setAttribute('data-theme', 'dark');
+      themeToggle.checked = true;
+    } else {
+      htmlRoot.removeAttribute('data-theme');
+      themeToggle.checked = false;
+    }
+    // Save preference
+    localStorage.setItem('darkMode', isDark ? 'enabled' : 'disabled');
+  }
+  
+  // Check for saved theme preference
+  const savedTheme = localStorage.getItem('darkMode');
+  if (savedTheme === 'enabled') {
+    setTheme(true);
+  } else if (savedTheme === null) {
+    // Check if user prefers dark mode via OS settings
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    setTheme(prefersDark);
+  }
+  
+  // Toggle theme when switch is clicked
+  themeToggle.addEventListener('change', function() {
+    setTheme(this.checked);
+  });
+  
   // Elements
   const videoUrlInput = document.getElementById('video-url');
   const fetchBtn = document.getElementById('fetch-btn');

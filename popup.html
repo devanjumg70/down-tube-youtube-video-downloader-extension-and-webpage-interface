@@ -29,11 +29,21 @@
       </div>
 
       <div class="options-container">
-        <label class="toggle-switch">
-          <input type="checkbox" id="use-ffmpeg" checked>
-          <span class="toggle-slider"></span>
-          <span class="toggle-label"><i class="fas fa-check-circle"></i> Use FFmpeg (better quality)</span>
-        </label>
+        <div class="options-row">
+          <label class="toggle-switch">
+            <input type="checkbox" id="use-ffmpeg" checked>
+            <span class="toggle-slider"></span>
+            <span class="toggle-label"><i class="fas fa-check-circle"></i> Use FFmpeg (better quality)</span>
+          </label>
+        </div>
+        
+        <div class="options-row mt-2">
+          <label class="toggle-switch">
+            <input type="checkbox" id="theme-toggle">
+            <span class="toggle-slider"></span>
+            <span class="toggle-label"><i class="fas fa-moon"></i> Dark Mode</span>
+          </label>
+        </div>
       </div>
       
       <div id="loader" class="hidden">

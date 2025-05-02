@@ -6,19 +6,36 @@
 }
 
 :root {
+  /* Common colors for both themes */
   --primary-color: #ff4b4b;
   --primary-hover: #e63e3e;
   --secondary-color: #4285f4;
   --secondary-hover: #3367d6;
+  --success-color: #48bb78;
+  --error-color: #f56565;
+  --border-radius: 8px;
+  
+  /* Light theme (default) */
   --text-dark: #2d3748;
   --text-light: #718096;
   --bg-light: #f8fafc;
   --bg-white: #ffffff;
   --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  --border-radius: 8px;
   --border-color: #e2e8f0;
-  --success-color: #48bb78;
-  --error-color: #f56565;
+  --card-bg: #ffffff;
+  --input-bg: #f8fafc;
+}
+
+/* Dark theme */
+[data-theme="dark"] {
+  --text-dark: #f0f4f8;
+  --text-light: #cbd5e0;
+  --bg-light: #1a202c;
+  --bg-white: #2d3748;
+  --shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  --border-color: #4a5568;
+  --card-bg: #2d3748;
+  --input-bg: #2d3748;
 }
 
 body {
@@ -101,6 +118,7 @@ header p {
   border-radius: var(--border-radius) 0 0 var(--border-radius);
   font-size: 14px;
   background-color: var(--bg-light);
+  color: var(--text-dark);
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
@@ -132,6 +150,20 @@ header p {
 /* Options Container */
 .options-container {
   margin-bottom: 16px;
+}
+
+.options-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.options-row:last-child {
+  margin-bottom: 0;
+}
+
+.mt-2 {
+  margin-top: 8px;
 }
 
 .toggle-switch {
@@ -188,6 +220,15 @@ input:checked + .toggle-slider:before {
 .toggle-label i {
   margin-right: 5px;
   color: var(--success-color);
+}
+
+/* Customize the icons for theme toggle */
+#theme-toggle + .toggle-slider + .toggle-label i {
+  color: #4a5568;
+}
+
+#theme-toggle:checked + .toggle-slider + .toggle-label i {
+  color: #fbd38d;
 }
 
 /* Loader */
@@ -267,10 +308,11 @@ input:checked + .toggle-slider:before {
 
 /* Video Info */
 #video-info {
-  background-color: white;
+  background-color: var(--card-bg);
   border-radius: var(--border-radius);
   overflow: hidden;
   margin-bottom: 0;
+  color: var(--text-dark);
 }
 
 /* Video Details */
@@ -281,6 +323,7 @@ input:checked + .toggle-slider:before {
   box-shadow: var(--shadow);
   border-radius: var(--border-radius);
   overflow: hidden;
+  background-color: var(--card-bg);
 }
 
 #video-thumbnail {
@@ -327,7 +370,7 @@ input:checked + .toggle-slider:before {
 /* Download Options */
 .download-options {
   margin-bottom: 0;
-  background-color: white;
+  background-color: var(--card-bg);
   border-radius: var(--border-radius);
   padding: 15px;
   box-shadow: var(--shadow);
