@@ -90,6 +90,9 @@ def get_video_info():
             formats = []
             seen_qualities = set()
             
+            # First, track the resolutions we've already seen
+            tracked_resolutions = set()
+            
             # First add combined formats that include both video and audio
             for f in info["formats"]:
                 # Look for formats that have both video and audio
@@ -105,13 +108,18 @@ def get_video_info():
                                 "has_video": True
                             })
                             seen_qualities.add(quality)
+                            # Track the resolution we've added
+                            tracked_resolutions.add(f['height'])
             
-            # Then add video-only formats for higher quality options
-            # (we'll combine with audio when downloading)
+            # Then add video-only formats ONLY for resolutions that don't have a combined format
+            # We'll combine with audio when downloading, so we don't need two 360p buttons, etc.
             for f in info["formats"]:
                 if f["ext"] == "mp4" and f.get("height") in [360, 480, 720, 1080]:
+                    # Skip this resolution if we already have a combined format for it
+                    if f['height'] in tracked_resolutions:
+                        continue
+                        
                     quality = f"{f['height']}p"
-                    # Only add if we don't already have this quality as a combined format
                     key = f"{quality}_video"
                     if key not in seen_qualities:
                         formats.append({
@@ -122,6 +130,8 @@ def get_video_info():
                             "has_video": True
                         })
                         seen_qualities.add(key)
+                        # Track this resolution too
+                        tracked_resolutions.add(f['height'])
             
             # Finally add audio-only format (prioritize MP3 or AAC formats for better compatibility)
             audio_format_found = False
