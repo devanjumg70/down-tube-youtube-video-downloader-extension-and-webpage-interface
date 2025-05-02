@@ -695,7 +695,7 @@ def get_playlist_info():
         logger.error(f"Error extracting playlist info: {str(e)}")
         return jsonify({"error": str(e)})
 
-@app.route("/api/batch-status")
+@app.route("/api/batch/status")
 def batch_status():
     """Get status of a batch download job"""
     job_id = request.args.get("jobId")
@@ -726,16 +726,32 @@ def batch_status():
         "completed_at": job_info['completed_at']
     })
 
-@app.route("/api/batch-download")
+@app.route("/api/batch/download", methods=['GET', 'POST'])
 def batch_download():
     """Start a batch download job for multiple videos"""
-    playlist_id = request.args.get("playlistId")
-    format_id = request.args.get("formatId", "best")  # Default to best quality
-    use_ffmpeg_param = request.args.get("use_ffmpeg", request.args.get("useFFmpeg", "true"))
-    use_ffmpeg = use_ffmpeg_param.lower() == "true"
+    # Handle both GET and POST requests
+    if request.method == 'POST':
+        # For JSON requests
+        data = request.get_json(silent=True) or {}
+        playlist_id = data.get("playlistId")
+        format_id = data.get("format", data.get("formatId", "best"))
+        use_ffmpeg_param = str(data.get("useFFmpeg", "true"))
+    else:
+        # For query parameters
+        playlist_id = request.args.get("playlistId")
+        format_id = request.args.get("formatId", request.args.get("format", "best"))
+        use_ffmpeg_param = request.args.get("useFFmpeg", request.args.get("use_ffmpeg", "true"))
+    
+    use_ffmpeg = str(use_ffmpeg_param).lower() == "true"
     
     if not playlist_id:
         return jsonify({"error": "Missing playlist ID"}), 400
+        
+    # Handle both direct IDs and URLs
+    if "/" in playlist_id or "youtu" in playlist_id:
+        extracted_id = extract_playlist_id(playlist_id)
+        if extracted_id:
+            playlist_id = extracted_id
     
     # Use full playlist URL
     url = f"https://www.youtube.com/playlist?list={playlist_id}"
