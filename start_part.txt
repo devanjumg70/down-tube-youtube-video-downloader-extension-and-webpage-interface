@@ -1,0 +1,4 @@
+def hello():
+    # Modern static HTML with improved UI
+    ffmpeg_status = "available" if FFMPEG_AVAILABLE else "not available"
+    aria2c_status = "available" if ARIA2C_AVAILABLE else "not available"
