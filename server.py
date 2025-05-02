@@ -368,6 +368,20 @@ def download_with_ytdlp(url, video_id, itag, file_id):
             
             logger.info(f"Audio-only download with format: {audio_format}")
             
+        # Add progress tracking
+        def ytdlp_direct_hook(d):
+            # Add file_id to info_dict for our progress_hook
+            if 'info_dict' in d and isinstance(d['info_dict'], dict):
+                d['info_dict']['__download_id'] = file_id
+            progress_hook(d)
+            
+        ydl_opts["progress_hooks"] = [ytdlp_direct_hook]
+        
+        # Add download ID to track this specific file - store as string to avoid dict decode errors
+        if 'postprocessor_args' not in ydl_opts:
+            ydl_opts['postprocessor_args'] = {}
+        ydl_opts['postprocessor_args']['__download_id'] = file_id
+        
         # Perform the download
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
@@ -492,6 +506,20 @@ def download_with_ffmpeg(url, video_id, itag, file_id):
                 "external_downloader_args": ["--max-connection-per-server=16", "--min-split-size=1M"]
             })
         
+        # Add progress hook for audio
+        def audio_direct_hook(d):
+            # Add file_id to info_dict for our progress_hook
+            if 'info_dict' in d and isinstance(d['info_dict'], dict):
+                d['info_dict']['__download_id'] = file_id
+            progress_hook(d)
+            
+        audio_opts['progress_hooks'] = [audio_direct_hook]
+        
+        # Add download ID for tracking
+        if 'postprocessor_args' not in audio_opts:
+            audio_opts['postprocessor_args'] = {}
+        audio_opts['postprocessor_args']['__download_id'] = file_id
+            
         # Download the audio
         with YoutubeDL(audio_opts) as ydl:
             ydl.download([url])
