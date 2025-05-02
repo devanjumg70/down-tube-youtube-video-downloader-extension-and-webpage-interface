@@ -555,48 +555,6 @@ input:checked + .toggle-slider:before {
   width: 0%;
   background-color: var(--secondary-color);
   transition: width 0.3s ease;
-  background-image: linear-gradient(
-    45deg,
-    rgba(255, 255, 255, 0.15) 25%,
-    transparent 25%,
-    transparent 50%,
-    rgba(255, 255, 255, 0.15) 50%,
-    rgba(255, 255, 255, 0.15) 75%,
-    transparent 75%,
-    transparent
-  );
-  background-size: 1rem 1rem;
-  animation: progress-bar-stripes 1s linear infinite;
-}
-
-@keyframes progress-bar-stripes {
-  0% { background-position: 1rem 0; }
-  100% { background-position: 0 0; }
-}
-
-.notification {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  padding: 12px 20px;
-  border-radius: var(--border-radius);
-  color: white;
-  font-size: 14px;
-  animation: slideIn 0.3s ease-out forwards;
-  z-index: 1000;
-  box-shadow: var(--shadow);
-}
-
-.notification.success {
-  background-color: var(--success-color);
-}
-
-.notification.error {
-  background-color: var(--error-color);
-}
-
-.notification i {
-  margin-right: 8px;
 }
 
 #batch-status {
@@ -605,44 +563,9 @@ input:checked + .toggle-slider:before {
   font-size: 0.9rem;
 }
 
-.batch-stats {
-  display: flex;
-  justify-content: space-between;
-  margin: 8px 0;
-}
-
-#batch-count, #failed-count {
+#batch-count {
   color: var(--text-light);
   font-size: 0.85rem;
-  margin: 0;
-}
-
-#failed-count {
-  color: var(--error-color);
-}
-
-#retry-container {
-  margin-top: 12px;
-  text-align: center;
-}
-
-.secondary-btn {
-  background-color: var(--bg-light);
-  color: var(--text-dark);
-  border: 1px solid var(--border-color);
-  padding: 8px 16px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  transition: all 0.2s ease;
-}
-
-.secondary-btn:hover {
-  background-color: var(--border-color);
-}
-
-.secondary-btn i {
-  margin-right: 5px;
 }
 
 footer {
@@ -672,99 +595,6 @@ footer p i {
   background-color: var(--bg-light);
   padding: 2px 6px;
   border-radius: 10px;
-}
-
-/* Download Queue Styles */
-.download-queue {
-  margin-top: 15px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  overflow: hidden;
-}
-
-.queue-section {
-  padding: 12px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.queue-section:last-child {
-  border-bottom: none;
-}
-
-.queue-section h5 {
-  font-size: 13px;
-  color: var(--text-dark);
-  margin-bottom: 8px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.video-list {
-  max-height: 150px;
-  overflow-y: auto;
-  padding-right: 8px;
-}
-
-.video-item {
-  display: flex;
-  align-items: center;
-  padding: 8px;
-  background: var(--bg-light);
-  border-radius: 4px;
-  margin-bottom: 4px;
-  font-size: 12px;
-  color: var(--text-dark);
-  transition: all 0.2s ease;
-}
-
-.video-item:hover {
-  transform: translateX(4px);
-}
-
-.video-item .thumbnail {
-  width: 60px;
-  height: 34px;
-  border-radius: 4px;
-  margin-right: 10px;
-  object-fit: cover;
-}
-
-.video-item .info {
-  flex: 1;
-  min-width: 0;
-}
-
-.video-item .title {
-  font-weight: 500;
-  margin-bottom: 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.video-item .status {
-  font-size: 11px;
-  color: var(--text-light);
-}
-
-.video-item.failed {
-  border-left: 3px solid var(--error-color);
-}
-
-.video-item.completed {
-  border-left: 3px solid var(--success-color);
-}
-
-.video-item.downloading {
-  border-left: 3px solid var(--secondary-color);
-  animation: pulse 1s infinite;
-}
-
-@keyframes pulse {
-  0% { opacity: 1; }
-  50% { opacity: 0.7; }
-  100% { opacity: 1; }
 }
 
 /* Animation Styles */
@@ -806,35 +636,6 @@ footer p i {
 
 .video-details-card {
   animation: slideIn 0.3s ease-out forwards;
-}
-
-/* Tooltips */
-[data-tooltip] {
-  position: relative;
-  cursor: help;
-}
-
-[data-tooltip]:before {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 5px 10px;
-  background-color: var(--text-dark);
-  color: white;
-  font-size: 12px;
-  border-radius: 4px;
-  white-space: nowrap;
-  visibility: hidden;
-  opacity: 0;
-  transition: all 0.2s ease;
-  z-index: 1000;
-}
-
-[data-tooltip]:hover:before {
-  visibility: visible;
-  opacity: 1;
 }
 
 /* Utility Classes */
