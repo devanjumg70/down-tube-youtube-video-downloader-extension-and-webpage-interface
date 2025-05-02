@@ -33,7 +33,7 @@
           <label class="toggle-switch">
             <input type="checkbox" id="use-ffmpeg" checked>
             <span class="toggle-slider"></span>
-            <span class="toggle-label"><i class="fas fa-check-circle"></i> Use FFmpeg (better quality)</span>
+            <span class="toggle-label" data-tooltip="Combines video and audio for best quality"><i class="fas fa-check-circle"></i> Use FFmpeg (better quality)</span>
           </label>
         </div>
         
@@ -136,6 +136,9 @@
             <div class="batch-stats">
               <p id="batch-count">
                 <i class="fas fa-check-circle"></i> Completed: <span id="completed-count">0</span>/<span id="total-count">0</span>
+              </p>
+              <p id="download-speed" class="hidden">
+                <i class="fas fa-tachometer-alt"></i> Speed: <span id="speed-value">0 MB/s</span>
               </p>
               <p id="failed-count" class="hidden">
                 <i class="fas fa-exclamation-circle"></i> Failed: <span id="failed-videos-count">0</span>

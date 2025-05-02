@@ -555,6 +555,48 @@ input:checked + .toggle-slider:before {
   width: 0%;
   background-color: var(--secondary-color);
   transition: width 0.3s ease;
+  background-image: linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.15) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.15) 50%,
+    rgba(255, 255, 255, 0.15) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 1rem 1rem;
+  animation: progress-bar-stripes 1s linear infinite;
+}
+
+@keyframes progress-bar-stripes {
+  0% { background-position: 1rem 0; }
+  100% { background-position: 0 0; }
+}
+
+.notification {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 12px 20px;
+  border-radius: var(--border-radius);
+  color: white;
+  font-size: 14px;
+  animation: slideIn 0.3s ease-out forwards;
+  z-index: 1000;
+  box-shadow: var(--shadow);
+}
+
+.notification.success {
+  background-color: var(--success-color);
+}
+
+.notification.error {
+  background-color: var(--error-color);
+}
+
+.notification i {
+  margin-right: 8px;
 }
 
 #batch-status {
@@ -671,6 +713,35 @@ footer p i {
 
 .video-details-card {
   animation: slideIn 0.3s ease-out forwards;
+}
+
+/* Tooltips */
+[data-tooltip] {
+  position: relative;
+  cursor: help;
+}
+
+[data-tooltip]:before {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 10px;
+  background-color: var(--text-dark);
+  color: white;
+  font-size: 12px;
+  border-radius: 4px;
+  white-space: nowrap;
+  visibility: hidden;
+  opacity: 0;
+  transition: all 0.2s ease;
+  z-index: 1000;
+}
+
+[data-tooltip]:hover:before {
+  visibility: visible;
+  opacity: 1;
 }
 
 /* Utility Classes */
