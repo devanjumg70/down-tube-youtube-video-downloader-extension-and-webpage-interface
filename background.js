@@ -54,25 +54,25 @@ async function fetchVideoInfo(videoId, sendResponse) {
   try {
     // Log to help with debugging
     console.log(`Fetching video info for ID: ${videoId} from ${API_SERVER}/api/info`);
-    
+
     // Call our API server to get video information
     const apiUrl = `${API_SERVER}/api/info?videoId=${videoId}`;
     console.log('Making request to:', apiUrl);
-    
+
     const response = await fetch(apiUrl);
     console.log('Response received:', response.status, response.statusText);
-    
+
     if (!response.ok) {
       console.error('Error response:', response.status, response.statusText);
       const errorData = await response.json();
       sendResponse({ error: errorData.error || 'Failed to fetch video information' });
       return;
     }
-    
+
     console.log('Response OK, parsing JSON');
     const data = await response.json();
     console.log('Parsed data:', data);
-    
+
     // Send the response back to the popup
     sendResponse({
       title: data.title || 'YouTube Video',
@@ -82,17 +82,17 @@ async function fetchVideoInfo(videoId, sendResponse) {
     });
   } catch (error) {
     console.error('Error fetching video info:', error);
-    
+
     // If our server fails, fall back to basic information
     try {
       // Fallback to oEmbed for basic info
       const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
       const oEmbedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(videoUrl)}&format=json`;
-      
+
       const oembedResponse = await fetch(oEmbedUrl);
       if (oembedResponse.ok) {
         const oembedData = await oembedResponse.json();
-        
+
         sendResponse({
           title: oembedData.title || 'YouTube Video',
           channel: oembedData.author_name || 'YouTube Channel',
@@ -122,11 +122,12 @@ async function fetchVideoInfo(videoId, sendResponse) {
  * @param {string} downloadUrl - The direct download URL from our server
  * @param {boolean} useFFmpeg - Whether to use FFmpeg for audio/video merging
  * @param {function} sendResponse - Callback to send response to popup
+ * @param {number} retryCount - Number of retry attempts (default 0)
  */
-async function downloadVideo(videoId, itag, fileName, downloadUrl, useFFmpeg, sendResponse) {
+async function downloadVideo(videoId, itag, fileName, downloadUrl, useFFmpeg, sendResponse, retryCount = 0) {
   try {
     console.log(`Download requested: videoId=${videoId}, itag=${itag}, useFFmpeg=${useFFmpeg}`);
-    
+
     if (downloadUrl) {
       // Use the direct download URL from our server
       console.log('Using direct download URL');
@@ -144,14 +145,14 @@ async function downloadVideo(videoId, itag, fileName, downloadUrl, useFFmpeg, se
     } else {
       // If we don't have a direct URL, call our API server to get one
       let apiUrl = `${API_SERVER}/api/download?videoId=${videoId}&itag=${itag}`;
-      
+
       // Add FFmpeg parameter if specified
       if (useFFmpeg !== undefined) {
         apiUrl += `&useFFmpeg=${useFFmpeg ? 'true' : 'false'}`;
       }
-      
+
       console.log('Starting download with API URL:', apiUrl);
-      
+
       // Start the download via the server
       chrome.downloads.download({
         url: apiUrl,
@@ -169,7 +170,20 @@ async function downloadVideo(videoId, itag, fileName, downloadUrl, useFFmpeg, se
     }
   } catch (error) {
     console.error('Error downloading video:', error);
-    sendResponse({ error: 'Failed to download video. Please try again later.' });
+
+    // Attempt to retry failed downloads
+    if (retryCount < 3) {
+      console.log(`Retrying download (attempt ${retryCount + 1}/3)...`);
+      setTimeout(() => {
+        downloadVideo(videoId, itag, fileName, downloadUrl, useFFmpeg, sendResponse, retryCount + 1);
+      }, 2000); // Wait 2 seconds before retry
+      return;
+    }
+
+    sendResponse({ 
+      error: 'Download failed after multiple attempts. Please try again later.',
+      details: error.message
+    });
   }
 }
 
@@ -181,25 +195,25 @@ async function downloadVideo(videoId, itag, fileName, downloadUrl, useFFmpeg, se
 async function fetchPlaylistInfo(playlistId, sendResponse) {
   try {
     console.log(`Fetching playlist info for ID: ${playlistId} from ${API_SERVER}/api/playlist`);
-    
+
     // Call our API server to get playlist information
     const apiUrl = `${API_SERVER}/api/playlist?playlistId=${playlistId}`;
     console.log('Making request to:', apiUrl);
-    
+
     const response = await fetch(apiUrl);
     console.log('Playlist response received:', response.status, response.statusText);
-    
+
     if (!response.ok) {
       console.error('Error playlist response:', response.status, response.statusText);
       const errorData = await response.json();
       sendResponse({ error: errorData.error || 'Failed to fetch playlist information' });
       return;
     }
-    
+
     console.log('Playlist response OK, parsing JSON');
     const data = await response.json();
     console.log('Parsed playlist data:', data);
-    
+
     // Send the response back to the popup
     sendResponse({
       title: data.title || 'YouTube Playlist',
@@ -224,11 +238,11 @@ async function fetchPlaylistInfo(playlistId, sendResponse) {
 async function startBatchDownload(playlistId, format, useFFmpeg, sendResponse) {
   try {
     console.log(`Starting batch download: playlistId=${playlistId}, format=${format}, useFFmpeg=${useFFmpeg}`);
-    
+
     // Call our API server to start the batch download
     const apiUrl = `${API_SERVER}/api/batch/download`;
     console.log('Making batch download request to:', apiUrl);
-    
+
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -240,20 +254,20 @@ async function startBatchDownload(playlistId, format, useFFmpeg, sendResponse) {
         useFFmpeg: useFFmpeg
       })
     });
-    
+
     console.log('Batch download response received:', response.status, response.statusText);
-    
+
     if (!response.ok) {
       console.error('Error batch download response:', response.status, response.statusText);
       const errorData = await response.json();
       sendResponse({ error: errorData.error || 'Failed to start batch download' });
       return;
     }
-    
+
     console.log('Batch download response OK, parsing JSON');
     const data = await response.json();
     console.log('Parsed batch download data:', data);
-    
+
     // Send the response back to the popup
     sendResponse({
       jobId: data.jobId,
@@ -274,25 +288,25 @@ async function startBatchDownload(playlistId, format, useFFmpeg, sendResponse) {
 async function checkBatchStatus(jobId, sendResponse) {
   try {
     console.log(`Checking batch status for job: ${jobId}`);
-    
+
     // Call our API server to check the batch status
     const apiUrl = `${API_SERVER}/api/batch/status?jobId=${jobId}`;
     console.log('Making batch status request to:', apiUrl);
-    
+
     const response = await fetch(apiUrl);
     console.log('Batch status response received:', response.status, response.statusText);
-    
+
     if (!response.ok) {
       console.error('Error batch status response:', response.status, response.statusText);
       const errorData = await response.json();
       sendResponse({ error: errorData.error || 'Failed to check batch status' });
       return;
     }
-    
+
     console.log('Batch status response OK, parsing JSON');
     const data = await response.json();
     console.log('Parsed batch status data:', data);
-    
+
     // Send the response back to the popup
     sendResponse({
       status: data.status,

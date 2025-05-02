@@ -62,6 +62,13 @@ document.addEventListener('DOMContentLoaded', function() {
   const completedCount = document.getElementById('completed-count');
   const totalCount = document.getElementById('total-count');
 
+  // Queue elements (added for playlist queue management)
+  const queueList = document.getElementById('queue-list');
+  const currentDownload = document.getElementById('current-download');
+  const completedList = document.getElementById('completed-list');
+  const failedList = document.getElementById('failed-list');
+
+
   // Variables for debounce
   let fetchTimeout = null;
   const DEBOUNCE_DELAY = 800; // ms delay for auto-fetch
@@ -90,6 +97,12 @@ document.addEventListener('DOMContentLoaded', function() {
     toggleElement(errorContainer, false);
     toggleElement(infoMessage, true); // Show info message when resetting
     toggleElement(batchProgress, false); // Hide batch progress
+    // Clear queue elements (added for playlist queue management)
+    queueList.innerHTML = '';
+    currentDownload.textContent = '';
+    completedList.innerHTML = '';
+    failedList.innerHTML = '';
+
   }
 
   // Function to show error message
@@ -324,13 +337,7 @@ document.addEventListener('DOMContentLoaded', function() {
               // Get FFmpeg option value
               const useFFmpeg = useFFmpegCheckbox.checked;
 
-              chrome.runtime.sendMessage({
-                action: 'downloadVideo',
-                videoId: videoId,
-                itag: format.itag,
-                fileName: `${response.title} - ${format.qualityLabel}.${format.container}`,
-                useFFmpeg: useFFmpeg
-              });
+              downloadVideo(videoId, format.itag, response.title, format.container);
             });
 
             resolutionButtons.appendChild(button);
@@ -360,6 +367,54 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     }, DEBOUNCE_DELAY);
   }
+
+  // Function to handle video download with progress tracking
+  function downloadVideo(videoId, itag, title, container) {
+    const useFFmpeg = useFFmpegCheckbox.checked;
+
+    // Show progress in UI
+    const progressDiv = document.createElement('div');
+    progressDiv.className = 'download-progress';
+    progressDiv.innerHTML = `
+      <div class="progress-bar">
+        <div class="progress-fill"></div>
+      </div>
+      <span class="progress-text">Starting download...</span>
+    `;
+    resolutionButtons.after(progressDiv);
+
+    chrome.runtime.sendMessage({
+      action: 'downloadVideo',
+      videoId: videoId,
+      itag: itag,
+      fileName: `${title} - ${format.qualityLabel}.${container}`, //Corrected filename
+      useFFmpeg: useFFmpeg
+    }, function(response) {
+      if (response.error) {
+        progressDiv.innerHTML = `<span class="error">${response.error}</span>`;
+      } else {
+        chrome.downloads.onChanged.addListener(function listener(delta) {
+          if (delta.id === response.downloadId) {
+            if (delta.state) {
+              if (delta.state.current === 'complete') {
+                progressDiv.innerHTML = '<span class="success">Download complete!</span>';
+                chrome.downloads.onChanged.removeListener(listener);
+              } else if (delta.state.current === 'interrupted') {
+                progressDiv.innerHTML = '<span class="error">Download interrupted</span>';
+                chrome.downloads.onChanged.removeListener(listener);
+              }
+            }
+            if (delta.bytesReceived) {
+              const progress = Math.round((delta.bytesReceived.current / delta.totalBytes.current) * 100);
+              progressDiv.querySelector('.progress-fill').style.width = `${progress}%`;
+              progressDiv.querySelector('.progress-text').textContent = `Downloading: ${progress}%`;
+            }
+          }
+        });
+      }
+    });
+  }
+
 
   // Event listeners
   fetchBtn.addEventListener('click', () => {

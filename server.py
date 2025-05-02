@@ -22,11 +22,24 @@ TEMP_DIR = tempfile.gettempdir()
 # Check if ffmpeg is available
 def check_ffmpeg():
     try:
-        subprocess.run(['ffmpeg', '-version'], check=True, capture_output=True)
-        logger.info("FFmpeg is available")
+        # Check ffmpeg version and capabilities
+        result = subprocess.run(['ffmpeg', '-version'], check=True, capture_output=True, text=True)
+        version_info = result.stdout.split('\n')[0]
+        logger.info(f"FFmpeg detected: {version_info}")
+        
+        # Verify key codecs are available
+        codecs = subprocess.run(['ffmpeg', '-codecs'], check=True, capture_output=True, text=True)
+        required_codecs = ['h264', 'aac']
+        missing_codecs = [codec for codec in required_codecs if codec not in codecs.stdout]
+        
+        if missing_codecs:
+            logger.warning(f"FFmpeg missing required codecs: {missing_codecs}")
+            return False
+            
+        logger.info("FFmpeg is fully available with required codecs")
         return True
-    except (subprocess.SubprocessError, FileNotFoundError):
-        logger.warning("FFmpeg is not available, falling back to yt-dlp merging")
+    except (subprocess.SubprocessError, FileNotFoundError) as e:
+        logger.warning(f"FFmpeg is not available: {str(e)}")
         return False
 
 # Check if aria2c is available
