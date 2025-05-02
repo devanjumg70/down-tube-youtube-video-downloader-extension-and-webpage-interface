@@ -406,6 +406,10 @@ def download_with_ytdlp(url, video_id, itag, file_id, is_batch=False):
                     if os.path.exists(output_path):
                         os.remove(output_path)
                         logger.info(f"Temporary file removed: {output_path}")
+                except PermissionError:
+                    logger.error("Permission denied when removing temporary file")
+                except FileNotFoundError:
+                    logger.error("Temporary file not found during cleanup")
                 except Exception as e:
                     logger.error(f"Error removing file: {str(e)}")
 
@@ -530,6 +534,10 @@ def download_with_ffmpeg(url, video_id, itag, file_id, is_batch=False):
                 if os.path.exists(output_path):
                     os.remove(output_path)
                 logger.info("Temporary audio files removed")
+            except PermissionError:
+                logger.error("Permission denied when removing temporary file")
+            except FileNotFoundError:
+                logger.error("Temporary file not found during cleanup")
             except Exception as e:
                 logger.error(f"Error removing files: {str(e)}")
 
@@ -618,9 +626,16 @@ def download_with_ffmpeg(url, video_id, itag, file_id, is_batch=False):
         if is_batch:
             # Clean up temporary files but keep the output
             for file_path in [temp_video, temp_audio]:
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-                    logger.info(f"Removed temporary file: {file_path}")
+                try:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        logger.info(f"Removed temporary file: {file_path}")
+                except PermissionError:
+                    logger.error("Permission denied when removing temporary file")
+                except FileNotFoundError:
+                    logger.error("Temporary file not found during cleanup")
+                except Exception as e:
+                    logger.error(f"Error removing file: {str(e)}")
             return output_path
 
         # For regular downloads, return the merged file
@@ -639,6 +654,10 @@ def download_with_ffmpeg(url, video_id, itag, file_id, is_batch=False):
                     if os.path.exists(file_path):
                         os.remove(file_path)
                         logger.info(f"Removed temporary file: {file_path}")
+            except PermissionError:
+                logger.error("Permission denied when removing temporary file")
+            except FileNotFoundError:
+                logger.error("Temporary file not found during cleanup")
             except Exception as e:
                 logger.error(f"Error removing files: {str(e)}")
 
@@ -894,9 +913,17 @@ def batch_download():
 
                             # Cleanup the output file for batch downloads 
                             # (we don't need to keep them since the user would have already downloaded them individually)
-                            if os.path.exists(output_path):
-                                os.remove(output_path)
-                                logger.info(f"Removed temporary batch file: {output_path}")
+                            try:
+                                if os.path.exists(output_path):
+                                    os.remove(output_path)
+                                    logger.info(f"Removed temporary batch file: {output_path}")
+                            except PermissionError:
+                                logger.error("Permission denied when removing temporary file")
+                            except FileNotFoundError:
+                                logger.error("Temporary file not found during cleanup")
+                            except Exception as e:
+                                logger.error(f"Error removing file: {str(e)}")
+
                         else:
                             failed_count += 1
                             BATCH_JOBS[job_id]['failed'] = failed_count
@@ -1669,8 +1696,7 @@ def hello():
                             <img src="${data.thumbnail}" class="video-thumbnail" alt="${data.title}">
                             <div class="video-text">
                                 <h2>${data.title || 'Unknown Title'}</h2>
-                                <p><i class="fas fa-user"></i> ${data.channel || 'Unknown Channel'}</p>
-                                <p><i class="fas fa-info-circle"></i> Select your preferred format below</p>
+                                <p><i class="fas fa-user"></i> ${data.channel || 'Unknown Channel'}</p>                                <p><i class="fas fa-info-circle"></i> Select your preferred format below</p>
                             </div>
                         </div>
 
