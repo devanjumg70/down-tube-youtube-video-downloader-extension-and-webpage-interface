@@ -5,7 +5,7 @@ channel = "stable-24_05"
 packages = ["chromium", "ffmpeg", "aria2"]
 
 [workflows]
-runButton = "Start Server"
+runButton = "Run"
 
 [[workflows.workflow]]
 name = "Project"
@@ -39,6 +39,15 @@ waitForPort = 5000
 
 [[workflows.workflow]]
 name = "Start Server"
+author = 42144751
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python server.py"
+
+[[workflows.workflow]]
+name = "Run"
 author = 42144751
 mode = "sequential"
 
