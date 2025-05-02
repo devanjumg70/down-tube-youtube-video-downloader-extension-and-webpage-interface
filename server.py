@@ -955,7 +955,7 @@ def hello():
     # Modern static HTML with improved UI
     ffmpeg_status = "available" if FFMPEG_AVAILABLE else "not available"
     aria2c_status = "available" if ARIA2C_AVAILABLE else "not available"
-    html = f"""
+    html = """
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -1833,6 +1833,16 @@ def hello():
     </body>
     </html>
     """
+
+    # Inject dynamic values into template
+    html = html.format(
+        ffmpeg_badge=('available' if FFMPEG_AVAILABLE else 'unavailable'),
+        ffmpeg_status=ffmpeg_status,
+        aria2c_badge=('available' if ARIA2C_AVAILABLE else 'unavailable'),
+        aria2c_status=aria2c_status,
+        ffmpeg_available=str(FFMPEG_AVAILABLE).lower(),
+        aria2c_available=str(ARIA2C_AVAILABLE).lower()
+    )
     return html
 
 if __name__ == "__main__":
