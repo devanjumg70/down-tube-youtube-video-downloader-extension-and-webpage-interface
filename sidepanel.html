@@ -20,6 +20,20 @@
       <h3 id="video-title"></h3>
       <p id="video-channel"></p>
       <div id="resolution-buttons"></div>
+      <div id="batch-progress" class="hidden">
+        <h4>Download Progress</h4>
+        <div class="progress-bar-container">
+          <div id="batch-progress-bar" class="progress-bar"></div>
+        </div>
+        <p id="batch-status"></p>
+        <div class="batch-stats">
+          <p id="batch-count">Completed: <span id="completed-count">0</span>/<span id="total-count">0</span></p>
+          <p id="failed-count" class="hidden">Failed: <span id="failed-videos-count">0</span></p>
+        </div>
+        <div id="retry-container" class="hidden">
+          <button id="retry-failed-btn">Retry Failed Downloads</button>
+        </div>
+      </div>
     </div>
     <div class="options">
       <label>

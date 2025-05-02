@@ -563,9 +563,44 @@ input:checked + .toggle-slider:before {
   font-size: 0.9rem;
 }
 
-#batch-count {
+.batch-stats {
+  display: flex;
+  justify-content: space-between;
+  margin: 8px 0;
+}
+
+#batch-count, #failed-count {
   color: var(--text-light);
   font-size: 0.85rem;
+  margin: 0;
+}
+
+#failed-count {
+  color: var(--error-color);
+}
+
+#retry-container {
+  margin-top: 12px;
+  text-align: center;
+}
+
+.secondary-btn {
+  background-color: var(--bg-light);
+  color: var(--text-dark);
+  border: 1px solid var(--border-color);
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+}
+
+.secondary-btn:hover {
+  background-color: var(--border-color);
+}
+
+.secondary-btn i {
+  margin-right: 5px;
 }
 
 footer {
