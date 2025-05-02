@@ -65,6 +65,24 @@ def extract_video_id(url):
     
     return url  # Already an ID
 
+def extract_playlist_id(url):
+    """Extract the playlist ID from a YouTube URL"""
+    if "/" in url or "youtu" in url:
+        from urllib.parse import urlparse, parse_qs
+        
+        # Handle playlist URLs
+        query = parse_qs(urlparse(url).query)
+        playlist_id = query.get("list", [None])[0]
+        
+        if playlist_id:
+            return playlist_id
+    
+    # Check if it's a direct playlist ID
+    if url and url.startswith(("PL", "UU", "LL", "FL", "RD", "UL", "TL", "PU", "OLAK")):
+        return url
+        
+    return None
+
 @app.route("/api/info")
 def get_video_info():
     video_id = request.args.get("videoId")
@@ -233,7 +251,7 @@ def download():
             logger.info("FFmpeg not available, falling back to yt-dlp")
         return download_with_ytdlp(url, video_id, itag, file_id)
 
-def download_with_ytdlp(url, video_id, itag, file_id):
+def download_with_ytdlp(url, video_id, itag, file_id, is_batch=False):
     """Download and process using yt-dlp's built-in merging capability"""
     output_path = os.path.join(TEMP_DIR, f"youtube_{video_id}_{file_id}.mp4")
     
@@ -340,7 +358,12 @@ def download_with_ytdlp(url, video_id, itag, file_id):
                 mimetype = "video/mp4"
                 ext = "mp4"
             
-            # Return the file
+            # If this is part of a batch download, return the path rather than the file
+            if is_batch:
+                logger.info(f"Batch download complete for video {video_id}: {output_path}")
+                return output_path
+            
+            # Otherwise, return the file for direct download
             response = send_file(
                 output_path,
                 as_attachment=True,
@@ -364,7 +387,7 @@ def download_with_ytdlp(url, video_id, itag, file_id):
         logger.error(f"Download error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-def download_with_ffmpeg(url, video_id, itag, file_id):
+def download_with_ffmpeg(url, video_id, itag, file_id, is_batch=False):
     """Download video and audio separately and merge with FFmpeg, or handle audio-only formats"""
     # First check if this is an audio-only format
     audio_only = False
@@ -385,7 +408,7 @@ def download_with_ffmpeg(url, video_id, itag, file_id):
                     elif f.get("vcodec") != "none" and f.get("acodec") != "none":
                         logger.info(f"Format {itag} already has both video and audio streams")
                         # Use direct download for combined formats
-                        return download_with_ytdlp(url, video_id, itag, file_id)
+                        return download_with_ytdlp(url, video_id, itag, file_id, is_batch)
     
     except Exception as e:
         logger.warning(f"Error checking format type: {str(e)}")
@@ -582,6 +605,149 @@ def download_with_ffmpeg(url, video_id, itag, file_id):
     except Exception as e:
         logger.error(f"Error in FFmpeg workflow: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+@app.route("/api/playlist-info")
+def get_playlist_info():
+    """Get information about a YouTube playlist"""
+    playlist_url = request.args.get("playlistUrl")
+    
+    if not playlist_url:
+        return jsonify({"error": "Missing playlist URL"}), 400
+    
+    # Extract playlist ID
+    playlist_id = extract_playlist_id(playlist_url)
+    
+    if not playlist_id:
+        return jsonify({"error": "Invalid playlist URL or ID"}), 400
+    
+    # Use full playlist URL
+    url = f"https://www.youtube.com/playlist?list={playlist_id}"
+    
+    logger.info(f"Received playlist info request for playlist ID: {playlist_id}")
+    
+    ydl_opts = {
+        "quiet": True,
+        "extract_flat": True,  # Don't extract individual videos to save time
+        "skip_download": True,
+        "ignoreerrors": True   # Skip unavailable videos
+    }
+    
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            # Extract playlist info
+            info = ydl.extract_info(url, download=False)
+            
+            if not info:
+                return jsonify({"error": "Could not retrieve playlist information"}), 404
+            
+            # Process videos in the playlist
+            videos = []
+            for entry in info.get('entries', []):
+                if entry:
+                    videos.append({
+                        "id": entry.get('id'),
+                        "title": entry.get('title', 'Unknown Title'),
+                        "thumbnail": entry.get('thumbnail', f"https://i.ytimg.com/vi/{entry.get('id')}/maxresdefault.jpg"),
+                        "duration": entry.get('duration'),
+                        "channel": entry.get('uploader', 'Unknown Channel')
+                    })
+            
+            return jsonify({
+                "id": playlist_id,
+                "title": info.get('title', 'YouTube Playlist'),
+                "channel": info.get('uploader', 'YouTube Channel'),
+                "videoCount": len(videos),
+                "videos": videos
+            })
+    except Exception as e:
+        logger.error(f"Error extracting playlist info: {str(e)}")
+        return jsonify({"error": str(e)})
+
+@app.route("/api/batch-download")
+def batch_download():
+    """Start a batch download job for multiple videos"""
+    playlist_id = request.args.get("playlistId")
+    format_id = request.args.get("formatId", "best")  # Default to best quality
+    use_ffmpeg_param = request.args.get("use_ffmpeg", request.args.get("useFFmpeg", "true"))
+    use_ffmpeg = use_ffmpeg_param.lower() == "true"
+    
+    if not playlist_id:
+        return jsonify({"error": "Missing playlist ID"}), 400
+    
+    # Use full playlist URL
+    url = f"https://www.youtube.com/playlist?list={playlist_id}"
+    
+    # Create a unique job ID for this batch download
+    job_id = str(uuid.uuid4())
+    
+    logger.info(f"Starting batch download for playlist ID: {playlist_id}, format: {format_id}, job ID: {job_id}")
+    
+    # We'll process this in a background thread to avoid blocking the response
+    def process_batch():
+        try:
+            # First, get the list of videos
+            ydl_opts_info = {
+                "quiet": True,
+                "extract_flat": True,
+                "skip_download": True,
+                "ignoreerrors": True
+            }
+            
+            with YoutubeDL(ydl_opts_info) as ydl:
+                playlist_info = ydl.extract_info(url, download=False)
+                
+                if not playlist_info or 'entries' not in playlist_info:
+                    logger.error(f"Could not retrieve playlist information for {playlist_id}")
+                    return
+                
+                # Process each video
+                success_count = 0
+                failed_count = 0
+                
+                for i, entry in enumerate(playlist_info.get('entries', [])):
+                    if not entry or not entry.get('id'):
+                        logger.warning(f"Skipping invalid entry at position {i}")
+                        failed_count += 1
+                        continue
+                    
+                    video_id = entry.get('id')
+                    video_url = f"https://www.youtube.com/watch?v={video_id}"
+                    
+                    try:
+                        # For each video, create a unique filename
+                        file_id = str(uuid.uuid4())
+                        
+                        if FFMPEG_AVAILABLE and use_ffmpeg:
+                            logger.info(f"Processing video {i+1}/{len(playlist_info.get('entries', []))}: {video_id} with FFmpeg")
+                            output_path = download_with_ffmpeg(video_url, video_id, format_id, file_id, is_batch=True)
+                        else:
+                            logger.info(f"Processing video {i+1}/{len(playlist_info.get('entries', []))}: {video_id} with yt-dlp")
+                            output_path = download_with_ytdlp(video_url, video_id, format_id, file_id, is_batch=True)
+                        
+                        if output_path:
+                            success_count += 1
+                        else:
+                            failed_count += 1
+                    except Exception as e:
+                        logger.error(f"Error downloading video {video_id}: {str(e)}")
+                        failed_count += 1
+                
+                logger.info(f"Batch download completed. Success: {success_count}, Failed: {failed_count}")
+        except Exception as e:
+            logger.error(f"Error processing batch download: {str(e)}")
+    
+    # Start the background thread
+    import threading
+    thread = threading.Thread(target=process_batch)
+    thread.daemon = True
+    thread.start()
+    
+    # Return immediately with the job ID
+    return jsonify({
+        "job_id": job_id,
+        "message": "Batch download job started",
+        "status": "processing"
+    })
 
 @app.route("/")
 def hello():
