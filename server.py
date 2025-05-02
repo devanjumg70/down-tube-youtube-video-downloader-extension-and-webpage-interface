@@ -26,16 +26,16 @@ def check_ffmpeg():
         result = subprocess.run(['ffmpeg', '-version'], check=True, capture_output=True, text=True)
         version_info = result.stdout.split('\n')[0]
         logger.info(f"FFmpeg detected: {version_info}")
-        
+
         # Verify key codecs are available
         codecs = subprocess.run(['ffmpeg', '-codecs'], check=True, capture_output=True, text=True)
         required_codecs = ['h264', 'aac']
         missing_codecs = [codec for codec in required_codecs if codec not in codecs.stdout]
-        
+
         if missing_codecs:
             logger.warning(f"FFmpeg missing required codecs: {missing_codecs}")
             return False
-            
+
         logger.info("FFmpeg is fully available with required codecs")
         return True
     except (subprocess.SubprocessError, FileNotFoundError) as e:
@@ -82,46 +82,46 @@ def extract_video_id(url):
     """Extract the video ID from a YouTube URL or return the ID if it's already an ID"""
     if "/" in url or "youtu" in url:
         from urllib.parse import urlparse, parse_qs
-        
+
         # Handle youtu.be URLs
         if "youtu.be" in url:
             return url.split("/")[-1].split("?")[0]
-        
+
         # Handle regular youtube.com URLs
         query = parse_qs(urlparse(url).query)
         return query.get("v", [url])[0]
-    
+
     return url  # Already an ID
 
 def extract_playlist_id(url):
     """Extract the playlist ID from a YouTube URL"""
     if "/" in url or "youtu" in url:
         from urllib.parse import urlparse, parse_qs
-        
+
         # Handle playlist URLs
         query = parse_qs(urlparse(url).query)
         playlist_id = query.get("list", [None])[0]
-        
+
         if playlist_id:
             return playlist_id
-    
+
     # Check if it's a direct playlist ID
     if url and url.startswith(("PL", "UU", "LL", "FL", "RD", "UL", "TL", "PU", "OLAK")):
         return url
-        
+
     return None
 
 @app.route("/api/info")
 def get_video_info():
     video_id = request.args.get("videoId")
-    
+
     if not video_id:
         return jsonify({"error": "Missing video ID"}), 400
-    
+
     url = f"https://www.youtube.com/watch?v={video_id}"
-    
+
     logger.info(f"Received info request for video ID: {video_id}")
-    
+
     ydl_opts = {
         "quiet": True,
         "skip_download": True,
@@ -131,14 +131,14 @@ def get_video_info():
     try:
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            
+
             # Filter formats to include only desired resolutions
             formats = []
             seen_qualities = set()
-            
+
             # First, track the resolutions we've already seen
             tracked_resolutions = set()
-            
+
             # First add combined formats that include both video and audio
             for f in info["formats"]:
                 # Look for formats that have both video and audio
@@ -156,7 +156,7 @@ def get_video_info():
                             seen_qualities.add(quality)
                             # Track the resolution we've added
                             tracked_resolutions.add(f['height'])
-            
+
             # Then add video-only formats ONLY for resolutions that don't have a combined format
             # We'll combine with audio when downloading, so we don't need two 360p buttons, etc.
             for f in info["formats"]:
@@ -164,7 +164,7 @@ def get_video_info():
                     # Skip this resolution if we already have a combined format for it
                     if f['height'] in tracked_resolutions:
                         continue
-                        
+
                     quality = f"{f['height']}p"
                     key = f"{quality}_video"
                     if key not in seen_qualities:
@@ -178,10 +178,10 @@ def get_video_info():
                         seen_qualities.add(key)
                         # Track this resolution too
                         tracked_resolutions.add(f['height'])
-            
+
             # Finally add audio-only format (prioritize MP3 or AAC formats for better compatibility)
             audio_format_found = False
-            
+
             # First try to find mp3 format (most compatible)
             for f in info["formats"]:
                 if f.get("vcodec") == "none" and f.get("acodec") != "none" and f["ext"] == "mp3":
@@ -196,7 +196,7 @@ def get_video_info():
                         seen_qualities.add("audio")
                         audio_format_found = True
                         break
-            
+
             # If no MP3, try to find m4a (AAC) - excellent quality and wide compatibility
             if not audio_format_found:
                 for f in info["formats"]:
@@ -212,7 +212,7 @@ def get_video_info():
                             seen_qualities.add("audio")
                             audio_format_found = True
                             break
-            
+
             # Fallback to any audio format if no MP3 or M4A found
             if not audio_format_found:
                 for f in info["formats"]:
@@ -227,7 +227,7 @@ def get_video_info():
                             })
                             seen_qualities.add("audio")
                             break
-            
+
             # Sort formats by quality (higher resolution first)
             def format_sort_key(x):
                 if "Audio Only" in x["qualityLabel"]:
@@ -235,9 +235,9 @@ def get_video_info():
                 else:
                     # Extract the numerical part from resolution (e.g., "720p" -> 720)
                     return int(x["qualityLabel"].replace("p", "").replace(" (with audio)", ""))
-                
+
             formats.sort(key=format_sort_key, reverse=True)
-            
+
             return jsonify({
                 "title": info.get("title", "YouTube Video"),
                 "channel": info.get("uploader", "YouTube Channel"),
@@ -254,20 +254,20 @@ def get_video_info():
 def download():
     video_id = request.args.get("videoId")
     itag = request.args.get("itag")
-    
+
     # Support both parameter names (use_ffmpeg and useFFmpeg) for better compatibility
     use_ffmpeg_param = request.args.get("use_ffmpeg", request.args.get("useFFmpeg", "true"))
     use_ffmpeg = use_ffmpeg_param.lower() == "true"
-    
+
     if not video_id or not itag:
         return jsonify({"error": "Missing video ID or format ID"}), 400
-    
+
     url = f"https://www.youtube.com/watch?v={video_id}"
     logger.info(f"Download request for video ID: {video_id}, format: {itag}, use_ffmpeg: {use_ffmpeg}")
-    
+
     # Create unique filenames for this download
     file_id = str(uuid.uuid4())
-    
+
     # If we have FFmpeg and user requested it, use FFmpeg for merging
     if FFMPEG_AVAILABLE and use_ffmpeg:
         logger.info("Using FFmpeg for download and merging")
@@ -282,7 +282,7 @@ def download():
 def download_with_ytdlp(url, video_id, itag, file_id, is_batch=False):
     """Download and process using yt-dlp's built-in merging capability"""
     output_path = os.path.join(TEMP_DIR, f"youtube_{video_id}_{file_id}.mp4")
-    
+
     # Check if a format has both video and audio streams
     has_both_streams = False
     try:
@@ -296,7 +296,7 @@ def download_with_ytdlp(url, video_id, itag, file_id, is_batch=False):
                     break
     except Exception as e:
         logger.warning(f"Error checking format streams: {str(e)}")
-    
+
     # Set up options for yt-dlp
     ydl_opts = {
         # If format already has both streams, just use that format directly
@@ -305,7 +305,7 @@ def download_with_ytdlp(url, video_id, itag, file_id, is_batch=False):
         "outtmpl": output_path,              # Output filename template
         "quiet": True,                       # Don't print progress
     }
-    
+
     # If aria2c is available, use it for faster downloading
     if ARIA2C_AVAILABLE:
         logger.info("Using aria2c for multi-threaded downloading")
@@ -313,13 +313,13 @@ def download_with_ytdlp(url, video_id, itag, file_id, is_batch=False):
             "external_downloader": "aria2c",
             "external_downloader_args": ["--max-connection-per-server=16", "--min-split-size=1M", "--max-concurrent-downloads=16"]
         })
-    
+
     try:
         logger.info(f"Starting download with yt-dlp... (using aria2c: {ARIA2C_AVAILABLE})")
         # Check if this is an audio-only format 
         audio_only = False
         audio_format = "mp3"  # Default to MP3 for audio-only
-        
+
         try:
             with YoutubeDL({"quiet": True, "skip_download": True}) as ydl:
                 info_check = ydl.extract_info(url, download=False)
@@ -331,16 +331,16 @@ def download_with_ytdlp(url, video_id, itag, file_id, is_batch=False):
                         break
         except Exception as e:
             logger.warning(f"Error checking audio format: {str(e)}")
-            
+
         # If this is an audio-only format, modify output path and options
         if audio_only:
             # If the original format is not mp3 or m4a, force mp3 output (better compatibility)
             if audio_format not in ["mp3", "m4a"]:
                 audio_format = "mp3"
-                
+
             # Update the output path to use the proper extension
             output_path = os.path.join(TEMP_DIR, f"audio_{video_id}_{file_id}.{audio_format}")
-            
+
             # For mp3 output, add postprocessors to ensure proper conversion
             if audio_format == "mp3":
                 ydl_opts["postprocessors"] = [{
@@ -348,27 +348,27 @@ def download_with_ytdlp(url, video_id, itag, file_id, is_batch=False):
                     'preferredcodec': 'mp3',
                     'preferredquality': '192',
                 }]
-            
+
             logger.info(f"Audio-only download with format: {audio_format}")
-            
+
         # Perform the download
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            
+
             # Get video info for filename
             title = info.get('title', 'video').replace(' ', '_')
             # Sanitize filename
             title = "".join(c for c in title if c.isalnum() or c in [' ', '_', '-']).rstrip()
-            
+
             # Check if the file was actually created
             if not os.path.exists(output_path):
                 logger.error(f"Download failed: File not created")
                 return jsonify({"error": "Download failed"}), 500
-            
+
             # Log file size for debugging
             file_size = os.path.getsize(output_path)
             logger.info(f"File size: {file_size} bytes")
-            
+
             # Set the correct MIME type and filename extension based on format
             if audio_only:
                 if audio_format == "mp3":
@@ -380,17 +380,17 @@ def download_with_ytdlp(url, video_id, itag, file_id, is_batch=False):
                 else:
                     mimetype = f"audio/{audio_format}"
                     ext = audio_format
-                    
+
                 logger.info(f"Using audio MIME type: {mimetype}")
             else:
                 mimetype = "video/mp4"
                 ext = "mp4"
-            
+
             # If this is part of a batch download, return the path rather than the file
             if is_batch:
                 logger.info(f"Batch download complete for video {video_id}: {output_path}")
                 return output_path
-            
+
             # Otherwise, return the file for direct download
             response = send_file(
                 output_path,
@@ -398,7 +398,7 @@ def download_with_ytdlp(url, video_id, itag, file_id, is_batch=False):
                 download_name=f"{title}.{ext}",
                 mimetype=mimetype
             )
-            
+
             # Clean up temporary file after response is sent
             @response.call_on_close
             def cleanup():
@@ -408,9 +408,9 @@ def download_with_ytdlp(url, video_id, itag, file_id, is_batch=False):
                         logger.info(f"Temporary file removed: {output_path}")
                 except Exception as e:
                     logger.error(f"Error removing file: {str(e)}")
-            
+
             return response
-            
+
     except Exception as e:
         logger.error(f"Download error: {str(e)}")
         return jsonify({"error": str(e)}), 500
@@ -420,7 +420,7 @@ def download_with_ffmpeg(url, video_id, itag, file_id, is_batch=False):
     # First check if this is an audio-only format
     audio_only = False
     audio_format = "mp3"  # Default audio format is MP3 for better compatibility
-    
+
     try:
         # Quick info check to identify audio-only or combined formats
         with YoutubeDL({"quiet": True, "skip_download": True}) as ydl:
@@ -437,22 +437,22 @@ def download_with_ffmpeg(url, video_id, itag, file_id, is_batch=False):
                         logger.info(f"Format {itag} already has both video and audio streams")
                         # Use direct download for combined formats
                         return download_with_ytdlp(url, video_id, itag, file_id, is_batch)
-    
+
     except Exception as e:
         logger.warning(f"Error checking format type: {str(e)}")
-    
+
     # If this is an audio-only format, download and convert directly to MP3
     if audio_only:
         logger.info(f"Processing audio-only format")
         output_path = os.path.join(TEMP_DIR, f"audio_{video_id}_{file_id}.mp3")
-        
+
         # Get info for title
         with YoutubeDL({"quiet": True}) as ydl:
             info = ydl.extract_info(url, download=False)
             title = info.get('title', 'audio').replace(' ', '_')
             # Sanitize filename
             title = "".join(c for c in title if c.isalnum() or c in [' ', '_', '-']).rstrip()
-        
+
         # Download audio using yt-dlp
         temp_audio = os.path.join(TEMP_DIR, f"temp_audio_{video_id}_{file_id}")
         audio_opts = {
@@ -460,29 +460,29 @@ def download_with_ffmpeg(url, video_id, itag, file_id, is_batch=False):
             "format": itag,
             "outtmpl": temp_audio
         }
-        
+
         # Add aria2c if available
         if ARIA2C_AVAILABLE:
             audio_opts.update({
                 "external_downloader": "aria2c",
                 "external_downloader_args": ["--max-connection-per-server=16", "--min-split-size=1M"]
             })
-        
+
         # Download the audio
         with YoutubeDL(audio_opts) as ydl:
             ydl.download([url])
-        
+
         # Get actual filename (with extension) that yt-dlp created
         temp_audio_file = None
         for filename in os.listdir(TEMP_DIR):
             if filename.startswith(f"temp_audio_{video_id}_{file_id}"):
                 temp_audio_file = os.path.join(TEMP_DIR, filename)
                 break
-        
+
         if not temp_audio_file or not os.path.exists(temp_audio_file):
             logger.error("Audio file not downloaded correctly")
             return jsonify({"error": "Failed to download audio"}), 500
-        
+
         # Convert to MP3 using FFmpeg
         logger.info(f"Converting audio to MP3 format using FFmpeg")
         ffmpeg_cmd = [
@@ -496,23 +496,23 @@ def download_with_ffmpeg(url, video_id, itag, file_id, is_batch=False):
             output_path
         ]
         subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
-        
+
         # Verify the output file exists
         if not os.path.exists(output_path):
             logger.error("FFmpeg audio conversion failed")
             return jsonify({"error": "Failed to convert audio to MP3"}), 500
-        
+
         # Return the MP3 file
         file_size = os.path.getsize(output_path)
         logger.info(f"Audio file created: {output_path}, size: {file_size} bytes")
-        
+
         # For batch downloads, return the path without sending the file
         if is_batch:
             # Clean up the temporary audio file but keep the output
             if os.path.exists(temp_audio_file):
                 os.remove(temp_audio_file)
             return output_path
-            
+
         # For regular downloads, send the file
         response = send_file(
             output_path,
@@ -520,7 +520,7 @@ def download_with_ffmpeg(url, video_id, itag, file_id, is_batch=False):
             download_name=f"{title}.mp3",
             mimetype="audio/mpeg"
         )
-        
+
         # Clean up files after sending
         @response.call_on_close
         def cleanup():
@@ -532,15 +532,15 @@ def download_with_ffmpeg(url, video_id, itag, file_id, is_batch=False):
                 logger.info("Temporary audio files removed")
             except Exception as e:
                 logger.error(f"Error removing files: {str(e)}")
-        
+
         return response
-    
+
     # This is a video format that needs audio - proceed with standard FFmpeg flow
     # Create temporary paths for video, audio, and output
     temp_video = os.path.join(TEMP_DIR, f"video_{video_id}_{file_id}.mp4")
     temp_audio = os.path.join(TEMP_DIR, f"audio_{video_id}_{file_id}.m4a")
     output_path = os.path.join(TEMP_DIR, f"merged_{video_id}_{file_id}.mp4")
-    
+
     try:
         # Get video info for title
         with YoutubeDL({"quiet": True}) as ydl:
@@ -548,12 +548,12 @@ def download_with_ffmpeg(url, video_id, itag, file_id, is_batch=False):
             title = info.get('title', 'video').replace(' ', '_')
             # Sanitize filename
             title = "".join(c for c in title if c.isalnum() or c in [' ', '_', '-']).rstrip()
-        
+
         # Set up base options
         base_opts = {
             "quiet": True,
         }
-        
+
         # Add aria2c if available
         if ARIA2C_AVAILABLE:
             logger.info("Using aria2c for multi-threaded downloading")
@@ -561,7 +561,7 @@ def download_with_ffmpeg(url, video_id, itag, file_id, is_batch=False):
                 "external_downloader": "aria2c",
                 "external_downloader_args": ["--max-connection-per-server=16", "--min-split-size=1M", "--max-concurrent-downloads=16"]
             })
-        
+
         # Download video
         video_opts = base_opts.copy()
         video_opts.update({
@@ -571,7 +571,7 @@ def download_with_ffmpeg(url, video_id, itag, file_id, is_batch=False):
         logger.info(f"Downloading video stream with format {itag}")
         with YoutubeDL(video_opts) as ydl:
             ydl.download([url])
-        
+
         # Download audio
         audio_opts = base_opts.copy()
         audio_opts.update({
@@ -581,12 +581,12 @@ def download_with_ffmpeg(url, video_id, itag, file_id, is_batch=False):
         logger.info("Downloading audio stream")
         with YoutubeDL(audio_opts) as ydl:
             ydl.download([url])
-        
+
         # Check if files exist
         if not os.path.exists(temp_video) or not os.path.exists(temp_audio):
             logger.error("Video or audio file not downloaded correctly")
             return jsonify({"error": "Failed to download video or audio streams"}), 500
-        
+
         # Merge with FFmpeg (optimized parameters)
         logger.info("Merging video and audio with FFmpeg")
         ffmpeg_cmd = [
@@ -604,16 +604,16 @@ def download_with_ffmpeg(url, video_id, itag, file_id, is_batch=False):
             output_path
         ]
         subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
-        
+
         # Check if merged file exists
         if not os.path.exists(output_path):
             logger.error("FFmpeg merging failed")
             return jsonify({"error": "Failed to merge video and audio streams"}), 500
-        
+
         # Log success
         file_size = os.path.getsize(output_path)
         logger.info(f"Merged file created: {output_path}, size: {file_size} bytes")
-        
+
         # If this is a batch download, return the path without sending the file
         if is_batch:
             # Clean up temporary files but keep the output
@@ -622,7 +622,7 @@ def download_with_ffmpeg(url, video_id, itag, file_id, is_batch=False):
                     os.remove(file_path)
                     logger.info(f"Removed temporary file: {file_path}")
             return output_path
-            
+
         # For regular downloads, return the merged file
         response = send_file(
             output_path,
@@ -630,7 +630,7 @@ def download_with_ffmpeg(url, video_id, itag, file_id, is_batch=False):
             download_name=f"{title}.mp4",
             mimetype="video/mp4"
         )
-        
+
         # Clean up temporary files after response is sent
         @response.call_on_close
         def cleanup():
@@ -641,9 +641,9 @@ def download_with_ffmpeg(url, video_id, itag, file_id, is_batch=False):
                         logger.info(f"Removed temporary file: {file_path}")
             except Exception as e:
                 logger.error(f"Error removing files: {str(e)}")
-        
+
         return response
-        
+
     except subprocess.SubprocessError as e:
         logger.error(f"FFmpeg error: {str(e)}")
         return jsonify({"error": f"FFmpeg error: {str(e)}"}), 500
@@ -655,36 +655,36 @@ def download_with_ffmpeg(url, video_id, itag, file_id, is_batch=False):
 def get_playlist_info():
     """Get information about a YouTube playlist"""
     playlist_id = request.args.get("playlistId")
-    
+
     if not playlist_id:
         return jsonify({"error": "Missing playlist ID"}), 400
-    
+
     # Handle both direct IDs and URLs
     if "/" in playlist_id or "youtu" in playlist_id:
         extracted_id = extract_playlist_id(playlist_id)
         if extracted_id:
             playlist_id = extracted_id
-    
+
     # Use full playlist URL
     url = f"https://www.youtube.com/playlist?list={playlist_id}"
-    
+
     logger.info(f"Received playlist info request for playlist ID: {playlist_id}")
-    
+
     ydl_opts = {
         "quiet": True,
         "extract_flat": True,  # Don't extract individual videos to save time
         "skip_download": True,
         "ignoreerrors": True   # Skip unavailable videos
     }
-    
+
     try:
         with YoutubeDL(ydl_opts) as ydl:
             # Extract playlist info
             info = ydl.extract_info(url, download=False)
-            
+
             if not info:
                 return jsonify({"error": "Could not retrieve playlist information"}), 404
-            
+
             # Process videos in the playlist
             videos = []
             for entry in info.get('entries', []):
@@ -696,7 +696,7 @@ def get_playlist_info():
                         "duration": entry.get('duration'),
                         "channel": entry.get('uploader', 'Unknown Channel')
                     })
-            
+
             return jsonify({
                 "id": playlist_id,
                 "title": info.get('title', 'YouTube Playlist'),
@@ -712,20 +712,20 @@ def get_playlist_info():
 def batch_status():
     """Get status of a batch download job"""
     job_id = request.args.get("jobId")
-    
+
     if not job_id:
         return jsonify({"error": "Missing job ID"}), 400
-    
+
     if job_id not in BATCH_JOBS:
         return jsonify({"error": "Invalid job ID or job has expired"}), 404
-    
+
     job_info = BATCH_JOBS[job_id]
-    
+
     # Calculate progress percentage if there are videos to process
     progress = 0
     if job_info['total'] > 0:
         progress = int((job_info['completed'] + job_info['failed']) / job_info['total'] * 100)
-    
+
     return jsonify({
         "job_id": job_id,
         "status": job_info['status'],
@@ -754,26 +754,26 @@ def batch_download():
         playlist_id = request.args.get("playlistId")
         format_id = request.args.get("formatId", request.args.get("format", "best"))
         use_ffmpeg_param = request.args.get("useFFmpeg", request.args.get("use_ffmpeg", "true"))
-    
+
     use_ffmpeg = str(use_ffmpeg_param).lower() == "true"
-    
+
     if not playlist_id:
         return jsonify({"error": "Missing playlist ID"}), 400
-        
+
     # Handle both direct IDs and URLs
     if "/" in playlist_id or "youtu" in playlist_id:
         extracted_id = extract_playlist_id(playlist_id)
         if extracted_id:
             playlist_id = extracted_id
-    
+
     # Use full playlist URL
     url = f"https://www.youtube.com/playlist?list={playlist_id}"
-    
+
     # Create a unique job ID for this batch download
     job_id = str(uuid.uuid4())
-    
-    logger.info(f"Starting batch download for playlist ID: {playlist_id}, format: {format_id}, job ID: {job_id}")
-    
+
+    logger.info(f"Startingbatch download forplaylist ID: {playlist_id}, format: {format_id}, job ID: {job_id}")
+
     # We'll process this in a background thread to avoid blocking the response
     def get_best_format(video_url, target_resolution=None):
         """Get the best available format for a video that matches the target resolution"""
@@ -782,10 +782,10 @@ def batch_download():
             try:
                 info = ydl.extract_info(video_url, download=False)
                 formats = info.get('formats', [])
-                
+
                 if not target_resolution or target_resolution == "best":
                     return "best"
-                
+
                 # Try to find the exact match for target resolution
                 resolution_map = {
                     "1080": 1080,
@@ -794,40 +794,40 @@ def batch_download():
                     "360": 360,
                     "audio": 0  # Special case for audio
                 }
-                
+
                 target_height = resolution_map.get(str(target_resolution), None)
                 if target_height is None:
                     return "best"  # Default to best if invalid resolution
-                
+
                 # For audio only request
                 if target_resolution == "audio" or target_height == 0:
                     audio_formats = [f for f in formats if f.get("vcodec") == "none" and f.get("acodec") != "none"]
                     if audio_formats:
                         return max(audio_formats, key=lambda x: x.get("quality", 0)).get("format_id", "bestaudio")
                     return "bestaudio"
-                
+
                 # For video requests, find closest match
                 video_formats = [f for f in formats if 
                                 f.get("height") and 
                                 f.get("vcodec") != "none" and
                                 f.get("height") <= target_height]
-                
+
                 if video_formats:
                     # Find format with closest height to target
                     best_video = max(video_formats, key=lambda x: x.get("height", 0))
                     return best_video.get("format_id", "best")
-                
+
                 # If no suitable format found, use the default best
                 return "best"
             except Exception as e:
                 logger.error(f"Error finding best format for {video_url}: {str(e)}")
                 return "best"  # Default to best on error
-                
+
     def run_in_app_context(func, *args, **kwargs):
         """Run a function within the Flask application context"""
         with app.app_context():
             return func(*args, **kwargs)
-            
+
     def process_batch():
         try:
             # First, get the list of videos
@@ -838,60 +838,60 @@ def batch_download():
                 "ignoreerrors": True,
                 "no_warnings": True
             }
-            
+
             # Track failed videos for retry
             BATCH_JOBS[job_id]['failed_videos'] = []
             BATCH_JOBS[job_id]['completed_videos'] = []
             BATCH_JOBS[job_id]['last_processed_index'] = 0
-            
+
             with YoutubeDL(ydl_opts_info) as ydl:
                 playlist_info = ydl.extract_info(url, download=False)
-                
+
                 if not playlist_info or 'entries' not in playlist_info:
                     logger.error(f"Could not retrieve playlist information for {playlist_id}")
                     BATCH_JOBS[job_id]['status'] = 'failed'
                     BATCH_JOBS[job_id]['completed_at'] = time.time()
                     return
-                
+
                 # Update job info with playlist details
                 BATCH_JOBS[job_id]['total'] = len(playlist_info.get('entries', []))
                 BATCH_JOBS[job_id]['playlist_title'] = playlist_info.get('title', 'YouTube Playlist')
-                
+
                 # Process each video
                 success_count = 0
                 failed_count = 0
                 entries = playlist_info.get('entries', [])
                 total_videos = len(entries)
-                
+
                 for i, entry in enumerate(entries):
                     if not entry or not entry.get('id'):
                         logger.warning(f"Skipping invalid entry at position {i}")
                         failed_count += 1
                         BATCH_JOBS[job_id]['failed'] = failed_count
                         continue
-                    
+
                     video_id = entry.get('id')
                     video_url = f"https://www.youtube.com/watch?v={video_id}"
-                    
+
                     try:
                         # For each video, create a unique filename
                         file_id = str(uuid.uuid4())
-                        
+
                         # Get the best available format for this specific video that matches the target
                         actual_format = get_best_format(video_url, format_id)
                         logger.info(f"Selected format {actual_format} for video {video_id} (requested: {format_id})")
-                        
+
                         if FFMPEG_AVAILABLE and use_ffmpeg:
                             logger.info(f"Processing video {i+1}/{total_videos}: {video_id} with FFmpeg")
                             output_path = download_with_ffmpeg(video_url, video_id, actual_format, file_id, is_batch=True)
                         else:
                             logger.info(f"Processing video {i+1}/{total_videos}: {video_id} with yt-dlp")
                             output_path = download_with_ytdlp(video_url, video_id, actual_format, file_id, is_batch=True)
-                        
+
                         if output_path:
                             success_count += 1
                             BATCH_JOBS[job_id]['completed'] = success_count
-                            
+
                             # Cleanup the output file for batch downloads 
                             # (we don't need to keep them since the user would have already downloaded them individually)
                             if os.path.exists(output_path):
@@ -904,7 +904,7 @@ def batch_download():
                                 'video_id': video_id,
                                 'index': i
                             })
-                        
+
                         # Track progress
                         BATCH_JOBS[job_id]['last_processed_index'] = i
                         BATCH_JOBS[job_id]['completed_videos'].append(video_id) if success_count > 0 else None
@@ -912,7 +912,7 @@ def batch_download():
                         logger.error(f"Error downloading video {video_id}: {str(e)}")
                         failed_count += 1
                         BATCH_JOBS[job_id]['failed'] = failed_count
-                
+
                 # Update job status to completed
                 BATCH_JOBS[job_id]['status'] = 'completed'
                 BATCH_JOBS[job_id]['completed_at'] = time.time()
@@ -921,7 +921,7 @@ def batch_download():
             logger.error(f"Error processing batch download: {str(e)}")
             BATCH_JOBS[job_id]['status'] = 'failed'
             BATCH_JOBS[job_id]['completed_at'] = time.time()
-    
+
     # Initialize job status in the tracking dictionary
     BATCH_JOBS[job_id] = {
         'status': 'processing',
@@ -933,16 +933,16 @@ def batch_download():
         'started_at': time.time(),
         'completed_at': None
     }
-    
+
     # Start the background thread with Flask app context
     def run_with_app_context():
         with app.app_context():
             process_batch()
-            
+
     thread = threading.Thread(target=run_with_app_context)
     thread.daemon = True
     thread.start()
-    
+
     # Return immediately with the job ID
     return jsonify({
         "job_id": job_id,
@@ -981,7 +981,7 @@ def hello():
                 --success-color: #48bb78;
                 --error-color: #f56565;
             }}
-            
+
             /* Dark Theme */
             [data-theme="dark"] {{
                 --text-dark: #f7fafc;
@@ -992,14 +992,14 @@ def hello():
                 --border-color: #4a5568;
                 --shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
             }}
-            
+
             * {{
                 margin: 0;
                 padding: 0;
                 box-sizing: border-box;
                 font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Oxygen, Ubuntu, sans-serif;
             }}
-            
+
             body {{
                 background-color: var(--bg-light);
                 margin: 0 auto;
@@ -1007,21 +1007,21 @@ def hello():
                 max-width: 800px;
                 color: var(--text-dark);
             }}
-            
+
             .container {{
                 background: var(--bg-white);
                 border-radius: var(--border-radius);
                 box-shadow: var(--shadow);
                 overflow: hidden;
             }}
-            
+
             .header {{
                 background: linear-gradient(to right, var(--primary-color), #ff7676);
                 color: white;
                 padding: 30px 20px;
                 text-align: center;
             }}
-            
+
             .header h1 {{
                 display: flex;
                 align-items: center;
@@ -1029,42 +1029,42 @@ def hello():
                 font-size: 28px;
                 margin-bottom: 10px;
             }}
-            
+
             .header h1 i {{
                 margin-right: 12px;
                 font-size: 32px;
             }}
-            
+
             .header p {{
                 font-size: 16px;
                 opacity: 0.9;
             }}
-            
+
             .system-status {{
                 background-color: var(--bg-light);
                 border-radius: var(--border-radius);
                 padding: 15px;
                 margin-bottom: 20px;
             }}
-            
+
             .status-title {{
                 font-weight: 600;
                 margin-bottom: 10px;
                 display: flex;
                 align-items: center;
             }}
-            
+
             .status-title i {{
                 margin-right: 8px;
                 color: var(--secondary-color);
             }}
-            
+
             .status-grid {{
                 display: grid;
                 grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
                 gap: 15px;
             }}
-            
+
             .status-item {{
                 display: flex;
                 align-items: center;
@@ -1073,26 +1073,26 @@ def hello():
                 border-radius: var(--border-radius);
                 border-left: 4px solid var(--secondary-color);
             }}
-            
+
             .status-item i {{
                 font-size: 20px;
                 margin-right: 10px;
             }}
-            
+
             .status-item .status-content {{
                 flex: 1;
             }}
-            
+
             .status-item .status-name {{
                 font-weight: 600;
                 margin-bottom: 3px;
             }}
-            
+
             .status-item .status-note {{
                 font-size: 12px;
                 color: var(--text-light);
             }}
-            
+
             .status-badge {{
                 padding: 3px 8px;
                 border-radius: 12px;
@@ -1100,38 +1100,38 @@ def hello():
                 font-weight: 600;
                 text-transform: uppercase;
             }}
-            
+
             .available {{
                 background: #d4edda;
                 color: #155724;
             }}
-            
+
             .unavailable {{
                 background: #f8d7da;
                 color: #721c24;
             }}
-            
+
             .form-section {{
                 padding: 25px;
             }}
-            
+
             .form-group {{
                 margin-bottom: 25px;
             }}
-            
+
             .form-label {{
                 display: block;
                 font-weight: 600;
                 margin-bottom: 8px;
                 color: var(--text-dark);
             }}
-            
+
             .input-wrapper {{
                 display: flex;
                 width: 100%;
                 position: relative;
             }}
-            
+
             .input-icon {{
                 position: absolute;
                 left: 12px;
@@ -1139,7 +1139,7 @@ def hello():
                 transform: translateY(-50%);
                 color: var(--text-light);
             }}
-            
+
             #videoInput {{
                 flex: 1;
                 padding: 12px 12px 12px 40px;
@@ -1148,13 +1148,13 @@ def hello():
                 font-size: 16px;
                 transition: all 0.2s;
             }}
-            
+
             #videoInput:focus {{
                 outline: none;
                 border-color: var(--primary-color);
                 box-shadow: 0 0 0 2px rgba(255, 75, 75, 0.25);
             }}
-            
+
             #fetchBtn {{
                 background-color: var(--primary-color);
                 color: white;
@@ -1169,21 +1169,21 @@ def hello():
                 align-items: center;
                 justify-content: center;
             }}
-            
+
             #fetchBtn i {{
                 margin-right: 8px;
             }}
-            
+
             #fetchBtn:hover {{
                 background-color: var(--primary-hover);
             }}
-            
+
             .toggle-container {{
                 margin-top: 15px;
                 display: flex;
                 align-items: center;
             }}
-            
+
             .toggle-switch {{
                 position: relative;
                 display: inline-block;
@@ -1191,13 +1191,13 @@ def hello():
                 height: 30px;
                 margin-right: 12px;
             }}
-            
+
             .toggle-switch input {{
                 opacity: 0;
                 width: 0;
                 height: 0;
             }}
-            
+
             .toggle-slider {{
                 position: absolute;
                 cursor: pointer;
@@ -1209,7 +1209,7 @@ def hello():
                 transition: .4s;
                 border-radius: 34px;
             }}
-            
+
             .toggle-slider:before {{
                 position: absolute;
                 content: "";
@@ -1221,27 +1221,27 @@ def hello():
                 transition: .4s;
                 border-radius: 50%;
             }}
-            
+
             input:checked + .toggle-slider {{
                 background-color: var(--success-color);
             }}
-            
+
             input:checked + .toggle-slider:before {{
                 transform: translateX(30px);
             }}
-            
+
             .toggle-label {{
                 font-weight: 500;
                 font-size: 14px;
                 display: flex;
                 align-items: center;
             }}
-            
+
             .toggle-label i {{
                 margin-right: 8px;
                 color: var(--success-color);
             }}
-            
+
             .loader {{
                 display: flex;
                 justify-content: center;
@@ -1249,7 +1249,7 @@ def hello():
                 flex-direction: column;
                 padding: 40px 20px;
             }}
-            
+
             .spinner {{
                 width: 40px;
                 height: 40px;
@@ -1259,18 +1259,18 @@ def hello():
                 animation: spin 1s linear infinite;
                 margin-bottom: 20px;
             }}
-            
+
             @keyframes spin {{
                 0% {{ transform: rotate(0deg); }}
                 100% {{ transform: rotate(360deg); }}
             }}
-            
+
             .video-info {{
                 padding: 20px;
                 max-width: 700px;
                 margin: 0 auto;
             }}
-            
+
             .video-details {{
                 display: flex;
                 align-items: flex-start;
@@ -1280,38 +1280,38 @@ def hello():
                 overflow: hidden;
                 box-shadow: var(--shadow);
             }}
-            
+
             .video-thumbnail {{
                 width: 240px;
                 height: auto;
                 object-fit: cover;
                 border-right: 1px solid var(--border-color);
             }}
-            
+
             .video-text {{
                 padding: 20px;
                 flex: 1;
             }}
-            
+
             .video-text h2 {{
                 font-size: 18px;
                 margin-bottom: 8px;
                 line-height: 1.4;
             }}
-            
+
             .video-text p {{
                 color: var(--text-light);
                 margin-bottom: 15px;
                 font-size: 14px;
             }}
-            
+
             .download-section {{
                 background: var(--card-bg);
                 border-radius: var(--border-radius);
                 padding: 20px;
                 box-shadow: var(--shadow);
             }}
-            
+
             .download-section h3 {{
                 font-size: 18px;
                 margin-bottom: 15px;
@@ -1320,18 +1320,18 @@ def hello():
                 display: flex;
                 align-items: center;
             }}
-            
+
             .download-section h3 i {{
                 margin-right: 10px;
                 color: var(--secondary-color);
             }}
-            
+
             .download-grid {{
                 display: grid;
                 grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
                 gap: 12px;
             }}
-            
+
             .download-btn {{
                 display: flex;
                 align-items: center;
@@ -1344,24 +1344,24 @@ def hello():
                 font-weight: 500;
                 transition: all 0.2s;
             }}
-            
+
             .download-btn:hover {{
                 background-color: var(--secondary-hover);
                 transform: translateY(-2px);
             }}
-            
+
             .download-btn i {{
                 margin-right: 8px;
             }}
-            
+
             .download-btn.audio {{
                 background-color: var(--primary-color);
             }}
-            
+
             .download-btn.audio:hover {{
                 background-color: var(--primary-hover);
             }}
-            
+
             .error-msg {{
                 background-color: rgba(245, 101, 101, 0.1);
                 color: var(--error-color);
@@ -1371,12 +1371,12 @@ def hello():
                 display: flex;
                 align-items: center;
             }}
-            
+
             .error-msg i {{
                 margin-right: 10px;
                 font-size: 18px;
             }}
-            
+
             footer {{
                 text-align: center;
                 margin-top: 30px;
@@ -1384,18 +1384,65 @@ def hello():
                 color: var(--text-light);
                 font-size: 14px;
             }}
-            
+
+            .options-container {{
+                display: flex;
+                flex-direction: column;
+            }}
+
+            .options-row {{
+                display: flex;
+                align-items: center;
+                margin-bottom: 10px;
+            }}
+
+            .options-row label {{
+                flex: 1;
+            }}
+
+            .mt-2 {{
+                margin-top: 15px;
+            }}
+
+            .progress-bar-container {{
+                width: 100%;
+                height: 20px;
+                background-color: #e2e8f0;
+                border-radius: 8px;
+                margin-bottom: 10px;
+                overflow: hidden;
+            }}
+
+            .progress-bar {{
+                height: 100%;
+                background-color: var(--secondary-color);
+                transition: width 0.5s ease-in-out;
+            }}
+
+            .batch-stats {{
+                margin-top: 10px;
+            }}
+
+            .batch-stats p {{
+                margin-bottom: 5px;
+                font-size: 14px;
+            }}
+
+            .hidden {{
+                display: none;
+            }}
+
             @media (max-width: 768px) {{
                 .video-details {{
                     flex-direction: column;
                 }}
-                
+
                 .video-thumbnail {{
                     width: 100%;
                     border-right: none;
                     border-bottom: 1px solid var(--border-color);
                 }}
-                
+
                 .download-grid {{
                     grid-template-columns: 1fr;
                 }}
@@ -1408,7 +1455,7 @@ def hello():
                 <h1><i class="fas fa-download"></i> YouTube Video Downloader</h1>
                 <p>Download videos and audio in your preferred format</p>
             </div>
-            
+
             <div class="form-section">
                 <div class="system-status">
                     <div class="status-title"><i class="fas fa-server"></i> System Status</div>
@@ -1439,7 +1486,39 @@ def hello():
                         </div>
                     </div>
                 </div>
-                
+
+                <div class="options-container">
+                    <div class="options-row">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="useFFmpeg" checked>
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-label" data-tooltip="Combines video and audio for best quality">
+                                <i class="fas fa-check-circle"></i> Use FFmpeg (better quality)
+                            </span>
+                        </label>
+                    </div>
+
+                    <div class="options-row mt-2">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="batch-download-toggle">
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-label">
+                                <i class="fas fa-list-ul"></i> Playlist Download
+                            </span>
+                        </label>
+                    </div>
+
+                    <div class="options-row mt-2">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="theme-toggle">
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-label">
+                                <i class="fas fa-moon"></i> Dark Mode
+                            </span>
+                        </label>
+                    </div>
+                </div>
+
                 <div class="form-group">
                     <label class="form-label" for="videoInput">Enter a YouTube URL or video ID:</label>
                     <div class="input-wrapper">
@@ -1448,28 +1527,8 @@ def hello():
                                autocomplete="off" spellcheck="false">
                         <button id="fetchBtn"><i class="fas fa-search"></i> Fetch</button>
                     </div>
-                    
-                    <div class="toggle-container">
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="useFFmpeg" {("checked" if FFMPEG_AVAILABLE else "")}>
-                            <span class="toggle-slider"></span>
-                        </label>
-                        <span class="toggle-label">
-                            <i class="fas fa-check-circle"></i> Use FFmpeg for better quality (recommended)
-                        </span>
-                    </div>
-                    
-                    <div class="toggle-container">
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="darkModeToggle">
-                            <span class="toggle-slider"></span>
-                        </label>
-                        <span class="toggle-label">
-                            <i class="fas fa-moon"></i> Dark Mode
-                        </span>
-                    </div>
                 </div>
-                
+
                 <div id="result">
                     <div class="loader" style="display: none;">
                         <div class="spinner"></div>
@@ -1479,21 +1538,45 @@ def hello():
                         <p><i class="fas fa-info-circle"></i> Enter a YouTube URL above and click "Fetch" to get download options</p>
                     </div>
                 </div>
+                <div id="batch-progress" class="hidden">
+                    <h4><i class="fas fa-tasks"></i> Download Progress</h4>
+                    <div class="progress-bar-container">
+                        <div id="batch-progress-bar" class="progress-bar"></div>
+                    </div>
+                    <p id="batch-status">Starting batch download...</p>
+                    <div class="batch-stats">
+                        <p id="batch-count">
+                            <i class="fas fa-check-circle"></i> Completed: <span id="completed-count">0</span>/<span id="total-count">0</span>
+                        </p>
+                        <p id="download-speed" class="hidden">
+                            <i class="fas fa-tachometer-alt"></i> Speed: <span id="speed-value">0 MB/s</span>
+                        </p>
+                        <p id="failed-count" class="hidden">
+                            <i class="fas fa-exclamation-circle"></i> Failed: <span id="failed-videos-count">0</span>
+                        </p>
+                    </div>
+                </div>
+
+                <div class="download-section">
+                    <h3><i class="fas fa-download"></i> Available Download Options</h3>
+                    <div class="download-grid">
+                    </div>
+                </div>
             </div>
         </div>
-        
+
         <footer>
             <p>© 2025 YouTube Video Downloader | Powered by yt-dlp & FFmpeg</p>
         </footer>
-        
+
         <script>
-        document.getElementById('fetchBtn').addEventListener('click', async () => {{
+        document.getElementById('fetchBtn').addEventListener('click', async () => {
             const input = document.getElementById('videoInput').value.trim();
             const resultDiv = document.getElementById('result');
             const loader = document.querySelector('.loader');
             const infoMessage = document.querySelector('.info-message');
-            
-            if (!input) {{
+
+            if (!input) {
                 resultDiv.innerHTML = `
                     <div class="error-msg">
                         <i class="fas fa-exclamation-circle"></i>
@@ -1504,12 +1587,12 @@ def hello():
                     </div>
                 `;
                 return;
-            }}
-            
+            }
+
             // Show loader, hide info message
             if (loader) loader.style.display = 'flex';
             if (infoMessage) infoMessage.style.display = 'none';
-            
+
             // Clear previous content
             resultDiv.innerHTML = `
                 <div class="loader">
@@ -1517,154 +1600,235 @@ def hello():
                     <p>Analyzing video content...</p>
                 </div>
             `;
-            
-            try {{
+
+            try {
                 // Extract video ID
                 let videoId = input;
-                if (input.includes('watch?v=')) {{
+                if (input.includes('watch?v=')) {
                     const match = input.match(/[?&]v=([^&#]*)/);
-                    if (match && match[1]) {{
+                    if (match && match[1]) {
                         videoId = match[1];
-                    }}
-                }} else if (input.includes('youtu.be/')) {{
-                    const match = input.match(/youtu\\.be\\/([^?&#]*)/);
-                    if (match && match[1]) {{
+                    }
+                } else if (input.includes('youtu.be/')) {
+                    const match = input.match(/youtu\.be\/([^?&#]*)/);
+                    if (match && match[1]) {
                         videoId = match[1];
-                    }}
-                }}
-                
-                const response = await fetch(`/api/info?videoId=${{encodeURIComponent(videoId)}}`);
+                    }
+                }
+
+                const response = await fetch(`/api/info?videoId=${encodeURIComponent(videoId)}`);
                 const data = await response.json();
-                
-                if (data.error) {{
+
+                if (data.error) {
                     resultDiv.innerHTML = `
                         <div class="error-msg">
                             <i class="fas fa-exclamation-circle"></i>
-                            <span>Error: ${{data.error}}</span>
+                            <span>Error: ${data.error}</span>
                         </div>
                     `;
                     return;
-                }}
-                
+                }
+
                 // Get FFmpeg setting
                 const useFFmpeg = document.getElementById('useFFmpeg').checked;
-                
+
                 // Create download buttons
                 let buttonsHtml = '';
-                if (data.formats && data.formats.length > 0) {{
-                    data.formats.forEach(format => {{
+                if (data.formats && data.formats.length > 0) {
+                    data.formats.forEach(format => {
                         // Determine if this is an audio format
                         const isAudioOnly = format.qualityLabel.includes('Audio Only');
                         const buttonClass = isAudioOnly ? 'download-btn audio' : 'download-btn';
                         const icon = isAudioOnly ? 'fa-music' : 'fa-video';
-                        
+
                         // Clean up format label for audio and video
                         let formatLabel = format.qualityLabel;
-                        if (formatLabel.includes('(MP3)')) {{
+                        if (formatLabel.includes('(MP3)')) {
                             formatLabel = 'Audio Only (MP3)';
-                        }} else if (formatLabel.includes('(AAC)')) {{
+                        } else if (formatLabel.includes('(AAC)')) {
                             formatLabel = 'Audio Only (AAC)';
-                        }} else if (formatLabel.includes('(with audio)')) {{
+                        } else if (formatLabel.includes('(with audio)')) {
                             // Remove "(with audio)" text to keep format labels consistent
                             formatLabel = formatLabel.replace(' (with audio)', '');
-                        }}
-                        
+                        }
+
                         buttonsHtml += `
-                            <a class="${{buttonClass}}" 
-                               href="/api/download?videoId=${{encodeURIComponent(videoId)}}&itag=${{format.itag}}&use_ffmpeg=${{useFFmpeg}}"
+                            <a class="${buttonClass}" 
+                               href="/api/download?videoId=${encodeURIComponent(videoId)}&itag=${format.itag}&use_ffmpeg=${useFFmpeg}"
                                target="_blank">
-                               <i class="fas ${{icon}}"></i> ${{formatLabel}}
+                               <i class="fas ${icon}"></i> ${formatLabel}
                             </a>
                         `;
-                    }});
-                }}
-                
+                    });
+                }
+
                 // Display video info
                 resultDiv.innerHTML = `
                     <div class="video-info">
                         <div class="video-details">
-                            <img src="${{data.thumbnail}}" class="video-thumbnail" alt="${{data.title}}">
+                            <img src="${data.thumbnail}" class="video-thumbnail" alt="${data.title}">
                             <div class="video-text">
-                                <h2>${{data.title || 'Unknown Title'}}</h2>
-                                <p><i class="fas fa-user"></i> ${{data.channel || 'Unknown Channel'}}</p>
+                                <h2>${data.title || 'Unknown Title'}</h2>
+                                <p><i class="fas fa-user"></i> ${data.channel || 'Unknown Channel'}</p>
                                 <p><i class="fas fa-info-circle"></i> Select your preferred format below</p>
                             </div>
                         </div>
-                        
+
                         <div class="download-section">
                             <h3><i class="fas fa-download"></i> Available Download Options</h3>
                             <div class="download-grid">
-                                ${{buttonsHtml || '<p>No formats available</p>'}}
+                                ${buttonsHtml || '<p>No formats available</p>'}
                             </div>
                         </div>
                     </div>
                 `;
-            }} catch (error) {{
+            } catch (error) {
                 resultDiv.innerHTML = `
                     <div class="error-msg">
                         <i class="fas fa-exclamation-circle"></i>
-                        <span>Error: ${{error.message}}</span>
+                        <span>Error: ${error.message}</span>
                     </div>
                 `;
-            }}
-        }});
-        
+            }
+        });
+
         // Auto-fetch on paste
-        document.getElementById('videoInput').addEventListener('paste', (e) => {{
+        document.getElementById('videoInput').addEventListener('paste', (e) => {
             // Short delay to let the paste complete
-            setTimeout(() => {{
+            setTimeout(() => {
                 const input = document.getElementById('videoInput').value.trim();
-                if (input && (input.includes('youtube.com') || input.includes('youtu.be'))) {{
+                if (input && (input.includes('youtubecom') || input.includes('youtu.be'))) {
                     document.getElementById('fetchBtn').click();
-                }}
-            }}, 100);
-        }});
-        
+                }
+            }, 100);
+        });
+
         // Enter key event listener
-        document.getElementById('videoInput').addEventListener('keypress', (e) => {{
-            if (e.key === 'Enter') {{
+        document.getElementById('videoInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
                 document.getElementById('fetchBtn').click();
-            }}
-        }});
-        
+            }
+        });
+
         // Disable FFmpeg toggle if not available
-        const ffmpegAvailable = {str(FFMPEG_AVAILABLE).lower()};
-        if (!ffmpegAvailable) {{
+        const ffmpegAvailable = ${str(FFMPEG_AVAILABLE).lower()};
+        if (!ffmpegAvailable) {
             document.getElementById('useFFmpeg').disabled = true;
             document.querySelector('.toggle-label').innerHTML += ' <span style="color: var(--error-color); font-size: 12px;">(Not available)</span>';
-        }}
-        
-        // Dark mode handling
-        const darkModeToggle = document.getElementById('darkModeToggle');
+        }
+
+        // Playlist download handling
+        const batchDownloadToggle = document.getElementById('batch-download-toggle');
+        const batchProgress = document.getElementById('batch-progress');
+        const videoInput = document.getElementById('videoInput');
+
+        batchDownloadToggle.addEventListener('change', () => {
+            if (batchDownloadToggle.checked) {
+                videoInput.placeholder = 'Enter YouTube playlist URL';
+            } else {
+                videoInput.placeholder = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+            }
+        });
+
+        //Dark mode handling
+        const themeToggle = document.getElementById('theme-toggle');
         const htmlElement = document.documentElement;
-        
-        // Function to set theme
-        function setTheme(isDark) {{
-            if (isDark) {{
+
+        //Function to set theme
+        function setTheme(isDark) {
+            if (isDark) {
                 htmlElement.setAttribute('data-theme', 'dark');
-                darkModeToggle.checked = true;
-            }} else {{
+                themeToggle.checked = true;
+            } else {
                 htmlElement.removeAttribute('data-theme');
-                darkModeToggle.checked = false;
-            }}
-            // Save preference
+                themeToggle.checked = false;
+            }
+            //Save preference
             localStorage.setItem('darkMode', isDark ? 'enabled' : 'disabled');
-        }}
-        
-        // Check for saved theme preference
+        }
+
+        //Check for saved theme preference
         const savedTheme = localStorage.getItem('darkMode');
-        if (savedTheme === 'enabled') {{
+        if (savedTheme === 'enabled') {
             setTheme(true);
-        }} else if (savedTheme === null) {{
-            // Check if user prefers dark mode via OS settings
+        } else if (savedTheme === null) {
+            //Check if user prefers dark mode via OS settings
             const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
             setTheme(prefersDark);
-        }}
-        
-        // Toggle theme when switch is clicked
-        darkModeToggle.addEventListener('change', function() {{
+        }
+
+        //Toggle theme when switch is clicked
+        themeToggle.addEventListener('change', function() {
             setTheme(this.checked);
-        }});
+        });
+
+        //Batch download progress updates
+        function updateProgressBar(completed, total, status) {
+            const progressBar = document.getElementById('batch-progress-bar');
+            const batchStatus = document.getElementById('batch-status');
+            const completedCount = document.getElementById('completed-count');
+            const totalCount = document.getElementById('total-count');
+
+            if (total > 0) {
+                const progressPercentage = (completed / total) * 100;
+                progressBar.style.width = progressPercentage + '%';
+            }
+            batchStatus.textContent = status;
+            completedCount.textContent = completed;
+            totalCount.textContent = total;
+        }
+
+        // Function to periodically check download progress
+        async function checkBatchProgress(jobId) {
+            try {
+                const response = await fetch(`/api/batch/status?jobId=${jobId}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    console.error("Error fetching batch progress:", data.error);
+                    return;
+                }
+                updateProgressBar(data.completed, data.total, data.status);
+
+                // If job is still processing, recursively call this function
+                if (data.status === 'processing') {
+                    setTimeout(() => checkBatchProgress(jobId), 2000);
+                }
+            } catch (error) {
+                console.error('Error checking batch progress:', error);
+            }
+        }
+
+        document.getElementById('batch-download-toggle').addEventListener('change', async () => {
+            if (document.getElementById('batch-download-toggle').checked) {
+                const playlistUrl = document.getElementById('videoInput').value.trim();
+                if (!playlistUrl) {
+                    alert('Please enter a YouTube playlist URL.');
+                    document.getElementById('batch-download-toggle').checked = false;
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`/api/batch/download?playlistId=${encodeURIComponent(playlistUrl)}`);
+                    const data = await response.json();
+                    if (data.job_id) {
+                        batchProgress.classList.remove('hidden');
+                        checkBatchProgress(data.job_id);
+                    } else if (data.error) {
+                        console.error("Error starting batch download:", data.error);
+                        alert("Error starting batch download: " + data.error);
+                        document.getElementById('batch-download-toggle').checked = false;
+                    }
+                } catch (error) {
+                    console.error("Error starting batch download:", error);
+                    alert("Error starting batch download.");
+                    document.getElementById('batch-download-toggle').checked = false;
+                }
+            } else {
+                batchProgress.classList.add('hidden');
+            }
+        });
+
         </script>
     </body>
     </html>
