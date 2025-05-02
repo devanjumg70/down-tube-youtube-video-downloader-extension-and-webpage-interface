@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const loader = document.getElementById('loader');
   const errorContainer = document.getElementById('error-container');
   const errorMessage = document.getElementById('error-message');
+  const infoMessage = document.getElementById('info-message');
   const videoInfo = document.getElementById('video-info');
   const videoTitle = document.getElementById('video-title');
   const videoChannel = document.getElementById('video-channel');
@@ -39,6 +40,7 @@ document.addEventListener('DOMContentLoaded', function() {
     resolutionButtons.innerHTML = '';
     toggleElement(videoInfo, false);
     toggleElement(errorContainer, false);
+    toggleElement(infoMessage, true); // Show info message when resetting
   }
   
   // Function to show error message
@@ -46,6 +48,7 @@ document.addEventListener('DOMContentLoaded', function() {
     errorMessage.textContent = message;
     toggleElement(errorContainer, true);
     toggleElement(loader, false);
+    toggleElement(infoMessage, false); // Hide info message when showing error
     currentlyFetchingUrl = ''; // Reset fetching state
   }
   
@@ -144,7 +147,16 @@ document.addEventListener('DOMContentLoaded', function() {
             
             button.innerHTML = `<i class="fas ${icon}"></i> ${formatLabel}`;
             
+            // Add animations and enhanced styling
+            button.style.animation = 'fadeIn 0.3s ease-in-out forwards';
+            
             button.addEventListener('click', () => {
+              // Visual feedback on click
+              button.style.transform = 'scale(0.95)';
+              setTimeout(() => {
+                button.style.transform = 'scale(1)';
+              }, 100);
+              
               // Get FFmpeg option value
               const useFFmpeg = useFFmpegCheckbox.checked;
               
@@ -160,6 +172,8 @@ document.addEventListener('DOMContentLoaded', function() {
             resolutionButtons.appendChild(button);
           });
           
+          // Hide info message and show video info
+          toggleElement(infoMessage, false);
           toggleElement(videoInfo, true);
         }
       );
