@@ -822,8 +822,14 @@ def batch_download():
                 "quiet": True,
                 "extract_flat": True,
                 "skip_download": True,
-                "ignoreerrors": True
+                "ignoreerrors": True,
+                "no_warnings": True
             }
+            
+            # Track failed videos for retry
+            BATCH_JOBS[job_id]['failed_videos'] = []
+            BATCH_JOBS[job_id]['completed_videos'] = []
+            BATCH_JOBS[job_id]['last_processed_index'] = 0
             
             with YoutubeDL(ydl_opts_info) as ydl:
                 playlist_info = ydl.extract_info(url, download=False)
@@ -881,6 +887,14 @@ def batch_download():
                         else:
                             failed_count += 1
                             BATCH_JOBS[job_id]['failed'] = failed_count
+                            BATCH_JOBS[job_id]['failed_videos'].append({
+                                'video_id': video_id,
+                                'index': i
+                            })
+                        
+                        # Track progress
+                        BATCH_JOBS[job_id]['last_processed_index'] = i
+                        BATCH_JOBS[job_id]['completed_videos'].append(video_id) if success_count > 0 else None
                     except Exception as e:
                         logger.error(f"Error downloading video {video_id}: {str(e)}")
                         failed_count += 1
