@@ -26,16 +26,29 @@ A Chrome extension that lets you download YouTube videos and entire playlists in
 5. The extension icon will appear in your toolbar
 
 ## Using the extension:
+
+### Single Video Download:
 1. Go to any YouTube video
 2. Click the extension icon
-3. Click "Fetch Video" 
+3. Click "Fetch Video" (or the URL will be auto-detected)
 4. Select your preferred quality
 5. Choose where to save the file
 6. Enjoy your downloaded video!
 
+### Playlist Download:
+1. Go to any YouTube playlist
+2. Click the extension icon
+3. The playlist will be auto-detected
+4. View playlist information including total videos
+5. Select desired format for all videos
+6. Click "Start Batch Download"
+7. Monitor progress as videos download
+8. Files will be saved to your downloads folder
+
 ## Remember:
 - The server must be running whenever you use the extension
-- For best quality, install FFmpeg: `pip install ffmpeg-python`
+- For best quality, enable the FFmpeg option in the extension UI
+- Use the aria2c option for faster, multi-threaded downloads
 - Downloading copyrighted content may violate YouTube's Terms of Service
 
 ## Need help?
