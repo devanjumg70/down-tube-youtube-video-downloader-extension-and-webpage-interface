@@ -588,6 +588,7 @@ def hello():
         <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
         <style>
             :root {{
+                /* Light Theme (Default) */
                 --primary-color: #ff4b4b;
                 --primary-hover: #e63e3e;
                 --secondary-color: #4285f4;
@@ -596,11 +597,23 @@ def hello():
                 --text-light: #718096;
                 --bg-light: #f8fafc;
                 --bg-white: #ffffff;
+                --card-bg: #ffffff;
                 --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
                 --border-radius: 8px;
                 --border-color: #e2e8f0;
                 --success-color: #48bb78;
                 --error-color: #f56565;
+            }}
+            
+            /* Dark Theme */
+            [data-theme="dark"] {{
+                --text-dark: #f7fafc;
+                --text-light: #cbd5e0;
+                --bg-light: #2d3748;
+                --bg-white: #1a202c;
+                --card-bg: #2d3748;
+                --border-color: #4a5568;
+                --shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
             }}
             
             * {{
@@ -678,7 +691,7 @@ def hello():
             .status-item {{
                 display: flex;
                 align-items: center;
-                background: white;
+                background: var(--card-bg);
                 padding: 12px;
                 border-radius: var(--border-radius);
                 border-left: 4px solid var(--secondary-color);
@@ -885,7 +898,7 @@ def hello():
                 display: flex;
                 align-items: flex-start;
                 margin-bottom: 30px;
-                background: white;
+                background: var(--card-bg);
                 border-radius: var(--border-radius);
                 overflow: hidden;
                 box-shadow: var(--shadow);
@@ -916,7 +929,7 @@ def hello():
             }}
             
             .download-section {{
-                background: white;
+                background: var(--card-bg);
                 border-radius: var(--border-radius);
                 padding: 20px;
                 box-shadow: var(--shadow);
@@ -1066,6 +1079,16 @@ def hello():
                         </label>
                         <span class="toggle-label">
                             <i class="fas fa-check-circle"></i> Use FFmpeg for better quality (recommended)
+                        </span>
+                    </div>
+                    
+                    <div class="toggle-container">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="darkModeToggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="toggle-label">
+                            <i class="fas fa-moon"></i> Dark Mode
                         </span>
                     </div>
                 </div>
@@ -1230,6 +1253,38 @@ def hello():
             document.getElementById('useFFmpeg').disabled = true;
             document.querySelector('.toggle-label').innerHTML += ' <span style="color: var(--error-color); font-size: 12px;">(Not available)</span>';
         }}
+        
+        // Dark mode handling
+        const darkModeToggle = document.getElementById('darkModeToggle');
+        const htmlElement = document.documentElement;
+        
+        // Function to set theme
+        function setTheme(isDark) {{
+            if (isDark) {{
+                htmlElement.setAttribute('data-theme', 'dark');
+                darkModeToggle.checked = true;
+            }} else {{
+                htmlElement.removeAttribute('data-theme');
+                darkModeToggle.checked = false;
+            }}
+            // Save preference
+            localStorage.setItem('darkMode', isDark ? 'enabled' : 'disabled');
+        }}
+        
+        // Check for saved theme preference
+        const savedTheme = localStorage.getItem('darkMode');
+        if (savedTheme === 'enabled') {{
+            setTheme(true);
+        }} else if (savedTheme === null) {{
+            // Check if user prefers dark mode via OS settings
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            setTheme(prefersDark);
+        }}
+        
+        // Toggle theme when switch is clicked
+        darkModeToggle.addEventListener('change', function() {{
+            setTheme(this.checked);
+        }});
         </script>
     </body>
     </html>
