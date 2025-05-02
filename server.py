@@ -1191,12 +1191,15 @@ def hello():
                         const buttonClass = isAudioOnly ? 'download-btn audio' : 'download-btn';
                         const icon = isAudioOnly ? 'fa-music' : 'fa-video';
                         
-                        // Clean up format label for audio
+                        // Clean up format label for audio and video
                         let formatLabel = format.qualityLabel;
                         if (formatLabel.includes('(MP3)')) {{
                             formatLabel = 'Audio Only (MP3)';
                         }} else if (formatLabel.includes('(AAC)')) {{
                             formatLabel = 'Audio Only (AAC)';
+                        }} else if (formatLabel.includes('(with audio)')) {{
+                            // Remove "(with audio)" text to keep format labels consistent
+                            formatLabel = formatLabel.replace(' (with audio)', '');
                         }}
                         
                         buttonsHtml += `
