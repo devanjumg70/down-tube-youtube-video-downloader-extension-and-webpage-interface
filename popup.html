@@ -144,6 +144,29 @@
                 <i class="fas fa-exclamation-circle"></i> Failed: <span id="failed-videos-count">0</span>
               </p>
             </div>
+            
+            <div class="download-queue">
+              <div class="queue-section">
+                <h5><i class="fas fa-clock"></i> In Queue</h5>
+                <div id="queue-list" class="video-list"></div>
+              </div>
+              
+              <div class="queue-section">
+                <h5><i class="fas fa-spinner fa-spin"></i> Currently Downloading</h5>
+                <div id="current-download" class="video-list"></div>
+              </div>
+              
+              <div class="queue-section">
+                <h5><i class="fas fa-check"></i> Completed</h5>
+                <div id="completed-list" class="video-list"></div>
+              </div>
+              
+              <div class="queue-section">
+                <h5><i class="fas fa-exclamation-triangle"></i> Failed</h5>
+                <div id="failed-list" class="video-list"></div>
+              </div>
+            </div>
+            
             <div id="retry-container" class="hidden">
               <button id="retry-failed-btn" class="secondary-btn">
                 <i class="fas fa-redo"></i> Retry Failed Downloads
