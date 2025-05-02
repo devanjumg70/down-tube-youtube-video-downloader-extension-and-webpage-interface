@@ -171,10 +171,15 @@ document.addEventListener('DOMContentLoaded', function() {
             let formatLabel = format.qualityLabel;
             
             if (format.has_audio && !format.has_video) {
+              // Only audio formats use the music icon
               icon = 'fa-music';
-            } else if (formatLabel.includes('with audio')) {
-              icon = 'fa-file-video';
-              formatLabel = formatLabel.replace(' (with audio)', ''); // Cleaner display
+            } else {
+              // All video formats use the same icon
+              icon = 'fa-video';
+              // Clean up the label
+              if (formatLabel.includes('with audio')) {
+                formatLabel = formatLabel.replace(' (with audio)', '');
+              }
             }
             
             button.innerHTML = `<i class="fas ${icon}"></i> ${formatLabel}`;
