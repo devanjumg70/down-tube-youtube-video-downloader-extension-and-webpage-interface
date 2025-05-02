@@ -27,7 +27,22 @@ download_progress = {}
 
 # Define a progress hook for yt-dlp
 def progress_hook(d):
-    file_id = d.get('info_dict', {}).get('__download_id', '')
+    # Make sure d['info_dict'] is a dictionary before accessing it
+    info_dict = d.get('info_dict', {})
+    
+    # Handle both string and dict types for download_id
+    if isinstance(info_dict, dict):
+        file_id = info_dict.get('__download_id', '')
+    else:
+        # Log the type and try to handle it
+        logger.warning(f"info_dict is not a dictionary: {type(info_dict)}")
+        try:
+            # This is a fallback - try to use the filename or another identifier
+            file_id = d.get('filename', '').split('_')[-2] if '_' in d.get('filename', '') else ''
+        except Exception as e:
+            logger.error(f"Error extracting file_id: {str(e)}")
+            file_id = ''
+    
     if file_id and file_id in download_progress:
         if d['status'] == 'downloading':
             # Calculate progress percentage
@@ -69,7 +84,7 @@ def progress_hook(d):
 # Check if ffmpeg is available
 def check_ffmpeg():
     try:
-        subprocess.run(['ffmpeg', '-version'], check=True, capture_output=True)
+        subprocess.run(['ffmpeg', '-version'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         logger.info("FFmpeg is available")
         return True
     except (subprocess.SubprocessError, FileNotFoundError):
@@ -79,7 +94,7 @@ def check_ffmpeg():
 # Check if aria2c is available
 def check_aria2c():
     try:
-        subprocess.run(['aria2c', '--version'], check=True, capture_output=True)
+        subprocess.run(['aria2c', '--version'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         logger.info("aria2c is available")
         return True
     except (subprocess.SubprocessError, FileNotFoundError):
@@ -588,8 +603,19 @@ def download_with_ffmpeg(url, video_id, itag, file_id):
         
         # Add progress hook to the options
         video_opts['progress_hooks'] = [progress_hook]
-        # Add download ID to track this specific file
-        video_opts['postprocessor_args'] = [{'__download_id': file_id}]
+        # Add download ID to track this specific file - store as string to avoid dict decode errors
+        if 'postprocessor_args' not in video_opts:
+            video_opts['postprocessor_args'] = {}
+        video_opts['postprocessor_args']['__download_id'] = file_id
+        
+        # Add custom callback for additional progress tracking
+        def ytdlp_hook(d):
+            # Add file_id to info_dict for our progress_hook
+            if 'info_dict' in d and isinstance(d['info_dict'], dict):
+                d['info_dict']['__download_id'] = file_id
+            progress_hook(d)
+        
+        video_opts['progress_hooks'] = [ytdlp_hook]
         
         with YoutubeDL(video_opts) as ydl:
             ydl.download([url])
@@ -612,7 +638,19 @@ def download_with_ffmpeg(url, video_id, itag, file_id):
         
         # Use progress hook for audio too
         audio_opts['progress_hooks'] = [progress_hook]
-        audio_opts['postprocessor_args'] = [{'__download_id': file_id}]
+        # Add download ID to track this specific file - store as string to avoid dict decode errors
+        if 'postprocessor_args' not in audio_opts:
+            audio_opts['postprocessor_args'] = {}
+        audio_opts['postprocessor_args']['__download_id'] = file_id
+        
+        # Add custom callback for additional progress tracking for audio
+        def audio_ytdlp_hook(d):
+            # Add file_id to info_dict for our progress_hook
+            if 'info_dict' in d and isinstance(d['info_dict'], dict):
+                d['info_dict']['__download_id'] = file_id
+            progress_hook(d)
+        
+        audio_opts['progress_hooks'] = [audio_ytdlp_hook]
         
         with YoutubeDL(audio_opts) as ydl:
             ydl.download([url])
