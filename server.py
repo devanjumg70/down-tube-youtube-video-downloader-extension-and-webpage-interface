@@ -7,6 +7,7 @@ import logging
 import time
 import uuid
 import subprocess
+import threading
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -41,6 +42,20 @@ def check_aria2c():
 # Global flags for tool availability
 FFMPEG_AVAILABLE = check_ffmpeg()
 ARIA2C_AVAILABLE = check_aria2c()
+
+# Global dict to track batch download jobs
+BATCH_JOBS = {
+    # job_id: {
+    #    'status': 'processing|completed|failed',
+    #    'total': number of videos in playlist,
+    #    'completed': number of videos successfully downloaded,
+    #    'failed': number of videos that failed,
+    #    'playlist_id': playlist ID,
+    #    'playlist_title': title of the playlist,
+    #    'started_at': timestamp when job started,
+    #    'completed_at': timestamp when job completed (if finished)
+    # }
+}
 
 # Add CORS headers to all responses
 @app.after_request
@@ -478,6 +493,14 @@ def download_with_ffmpeg(url, video_id, itag, file_id, is_batch=False):
         file_size = os.path.getsize(output_path)
         logger.info(f"Audio file created: {output_path}, size: {file_size} bytes")
         
+        # For batch downloads, return the path without sending the file
+        if is_batch:
+            # Clean up the temporary audio file but keep the output
+            if os.path.exists(temp_audio_file):
+                os.remove(temp_audio_file)
+            return output_path
+            
+        # For regular downloads, send the file
         response = send_file(
             output_path,
             as_attachment=True,
@@ -578,7 +601,16 @@ def download_with_ffmpeg(url, video_id, itag, file_id, is_batch=False):
         file_size = os.path.getsize(output_path)
         logger.info(f"Merged file created: {output_path}, size: {file_size} bytes")
         
-        # Return the merged file
+        # If this is a batch download, return the path without sending the file
+        if is_batch:
+            # Clean up temporary files but keep the output
+            for file_path in [temp_video, temp_audio]:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    logger.info(f"Removed temporary file: {file_path}")
+            return output_path
+            
+        # For regular downloads, return the merged file
         response = send_file(
             output_path,
             as_attachment=True,
@@ -663,6 +695,37 @@ def get_playlist_info():
         logger.error(f"Error extracting playlist info: {str(e)}")
         return jsonify({"error": str(e)})
 
+@app.route("/api/batch-status")
+def batch_status():
+    """Get status of a batch download job"""
+    job_id = request.args.get("jobId")
+    
+    if not job_id:
+        return jsonify({"error": "Missing job ID"}), 400
+    
+    if job_id not in BATCH_JOBS:
+        return jsonify({"error": "Invalid job ID or job has expired"}), 404
+    
+    job_info = BATCH_JOBS[job_id]
+    
+    # Calculate progress percentage if there are videos to process
+    progress = 0
+    if job_info['total'] > 0:
+        progress = int((job_info['completed'] + job_info['failed']) / job_info['total'] * 100)
+    
+    return jsonify({
+        "job_id": job_id,
+        "status": job_info['status'],
+        "progress": progress,
+        "total": job_info['total'],
+        "completed": job_info['completed'],
+        "failed": job_info['failed'],
+        "playlist_id": job_info['playlist_id'],
+        "playlist_title": job_info['playlist_title'],
+        "started_at": job_info['started_at'],
+        "completed_at": job_info['completed_at']
+    })
+
 @app.route("/api/batch-download")
 def batch_download():
     """Start a batch download job for multiple videos"""
@@ -698,16 +761,25 @@ def batch_download():
                 
                 if not playlist_info or 'entries' not in playlist_info:
                     logger.error(f"Could not retrieve playlist information for {playlist_id}")
+                    BATCH_JOBS[job_id]['status'] = 'failed'
+                    BATCH_JOBS[job_id]['completed_at'] = time.time()
                     return
+                
+                # Update job info with playlist details
+                BATCH_JOBS[job_id]['total'] = len(playlist_info.get('entries', []))
+                BATCH_JOBS[job_id]['playlist_title'] = playlist_info.get('title', 'YouTube Playlist')
                 
                 # Process each video
                 success_count = 0
                 failed_count = 0
+                entries = playlist_info.get('entries', [])
+                total_videos = len(entries)
                 
-                for i, entry in enumerate(playlist_info.get('entries', [])):
+                for i, entry in enumerate(entries):
                     if not entry or not entry.get('id'):
                         logger.warning(f"Skipping invalid entry at position {i}")
                         failed_count += 1
+                        BATCH_JOBS[job_id]['failed'] = failed_count
                         continue
                     
                     video_id = entry.get('id')
@@ -718,26 +790,51 @@ def batch_download():
                         file_id = str(uuid.uuid4())
                         
                         if FFMPEG_AVAILABLE and use_ffmpeg:
-                            logger.info(f"Processing video {i+1}/{len(playlist_info.get('entries', []))}: {video_id} with FFmpeg")
+                            logger.info(f"Processing video {i+1}/{total_videos}: {video_id} with FFmpeg")
                             output_path = download_with_ffmpeg(video_url, video_id, format_id, file_id, is_batch=True)
                         else:
-                            logger.info(f"Processing video {i+1}/{len(playlist_info.get('entries', []))}: {video_id} with yt-dlp")
+                            logger.info(f"Processing video {i+1}/{total_videos}: {video_id} with yt-dlp")
                             output_path = download_with_ytdlp(video_url, video_id, format_id, file_id, is_batch=True)
                         
                         if output_path:
                             success_count += 1
+                            BATCH_JOBS[job_id]['completed'] = success_count
+                            
+                            # Cleanup the output file for batch downloads 
+                            # (we don't need to keep them since the user would have already downloaded them individually)
+                            if os.path.exists(output_path):
+                                os.remove(output_path)
+                                logger.info(f"Removed temporary batch file: {output_path}")
                         else:
                             failed_count += 1
+                            BATCH_JOBS[job_id]['failed'] = failed_count
                     except Exception as e:
                         logger.error(f"Error downloading video {video_id}: {str(e)}")
                         failed_count += 1
+                        BATCH_JOBS[job_id]['failed'] = failed_count
                 
+                # Update job status to completed
+                BATCH_JOBS[job_id]['status'] = 'completed'
+                BATCH_JOBS[job_id]['completed_at'] = time.time()
                 logger.info(f"Batch download completed. Success: {success_count}, Failed: {failed_count}")
         except Exception as e:
             logger.error(f"Error processing batch download: {str(e)}")
+            BATCH_JOBS[job_id]['status'] = 'failed'
+            BATCH_JOBS[job_id]['completed_at'] = time.time()
+    
+    # Initialize job status in the tracking dictionary
+    BATCH_JOBS[job_id] = {
+        'status': 'processing',
+        'total': 0,
+        'completed': 0,
+        'failed': 0,
+        'playlist_id': playlist_id,
+        'playlist_title': 'Loading...',
+        'started_at': time.time(),
+        'completed_at': None
+    }
     
     # Start the background thread
-    import threading
     thread = threading.Thread(target=process_batch)
     thread.daemon = True
     thread.start()
